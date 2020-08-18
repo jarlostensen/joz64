@@ -1,0 +1,5 @@
+
+build/*
+zig/*
+external/*
+zig-cache/*
