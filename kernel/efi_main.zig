@@ -1,6 +1,7 @@
 const std = @import("std");
 const builtin = @import("builtin");
 const z_efi = @import("z-efi/efi.zig");
+const gdt = @import("gdt.zig");
 const Allocator = std.mem.Allocator;
 
 // helper used to convert utf8 strings to utf16 as required by UEFI console functions
@@ -11,31 +12,55 @@ fn to_wide(dest: []u16, src: []const u8) void {
     dest[src.len] = 0;
 }
 
-const gdt = packed struct {
-    base:   u64,
-    limit:  u16
-};
-extern fn _sgdt() *const gdt;
-
 //NOTE:0.6.0: it is not clear if "extern" or "pub" is the supposed choice, but extern causes a conflict and pub causes EfiMain not to be found, 
 //      at any rate we need to do the explicit comptime export below
 pub fn EfiMain(img: z_efi.Handle, sys: *z_efi.SystemTable) callconv(.Stdcall) z_efi.Status {
 
-    const kHello = "| joz64 ------------------------------\n\r";
-    var wbuffer : [64]u16 = undefined;
+    const kHello = "| joz64 ------------------------------\n\r\n\r";
+    var wbuffer : [256]u16 = undefined;
     to_wide(&wbuffer, kHello);    
     _ = sys.con_out.output_string(sys.con_out, &wbuffer);
 
-    const gdt_ptr : *const gdt = _sgdt();
+    const gdt_entries = gdt.storeGdt();
     
-    var print_fmt_buffer: [128]u8 = undefined;
+    var print_fmt_buffer: [1024]u8 = undefined;
     const allocator = &std.heap.FixedBufferAllocator.init(&print_fmt_buffer).allocator;
     if(std.fmt.allocPrint(allocator, 
-            "gdt_ptr 0x{x}: gdt base {x}, limit {x}\n\r",
-        .{@ptrToInt(gdt_ptr), 101, 42} //gdt_ptr.base,gdt_ptr.limit}
+            "GDT has {} entries:\n\r",
+        .{gdt_entries.len}
     )) |str| {
         to_wide(&wbuffer, str);
+        allocator.free(str);
         _ = sys.con_out.output_string(sys.con_out, &wbuffer);
+
+        const kCodeSeg = "code";
+        const kDataSeg = "data";
+        const kNull = "null";
+
+        // unpack and list entries in the GDT
+        for(gdt_entries) | gdt_entry | {
+            var seg_name = kCodeSeg;
+            if ( gdt_entry.executable == 0 ) {
+                seg_name = kDataSeg;
+            }
+            if( gdt_entry.limit_low == 0 ) {
+                seg_name = kNull;
+            }
+            comptime var bitness : u8 = 16;
+            if ( gdt_entry.size == 1 ) {
+                bitness = 32;
+            }
+            
+            const info_str = std.fmt.bufPrint(print_fmt_buffer[0..], 
+                        "{} segment, limit_low = 0x{x}, privilege level {}, {} bit\n\r",
+                        .{seg_name, gdt_entry.limit_low, gdt_entry.privilege, bitness}
+            ) catch |err| switch (err) {
+                error.NoSpaceLeft => unreachable,
+            };
+            to_wide(&wbuffer, info_str);
+            _ = sys.con_out.output_string(sys.con_out, &wbuffer);
+        }
+
     } else |err| 
     {
         unreachable;
