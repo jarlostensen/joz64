@@ -22,6 +22,8 @@ const kPaeEnabled = W("PAE is enabled\n\r");
 const kPseEnabled = W("PSE is enabled\n\r");
 const kWarnTSSet  = W("WARNING: task switch flag is set\n\r");
 const kWarnEMSet = W("WARNING: x87 emulation is enabled\n\r");
+const kLongModeEnabled = W("Long mode is enabled\n\r");
+const kWarnLongModeUnsupported = W("WARNING: Long mode is NOT supported\n\r");
 
 fn dump_system_information(img: z_efi.Handle, sys: *z_efi.SystemTable) void {
 
@@ -75,32 +77,27 @@ fn dump_system_information(img: z_efi.Handle, sys: *z_efi.SystemTable) void {
 
     var registers : [4]u32 = undefined;
     kernel.cpuid(0,0, &registers);
+    const max_leaf = registers[0];
 
-    const x : *[12]u8 = @ptrCast(*[12]u8,&registers[1..]);
-    var vendor_string: [13]u8 = undefined;
-    @memcpy(vendor_string[0*4..], x[0*4..], 4);
-    @memcpy(vendor_string[1*4..], x[2*4..], 4);
-    @memcpy(vendor_string[2*4..], x[1*4..], 4);
-    vendor_string[0] = 0;
+    // check if long-mode is available and enabled (IT SHOULD BE!)
+    kernel.cpuid(0x80000001, 0, &registers);
+    const efr_msr = kernel.read_msr(0xc0000080);
+    if ( (registers[3] & (1<<29))==(1<<29) 
+            and
+        ( (efr_msr & (1<<10)) == (1<<10) )
+        ) {
+        _ = sys.con_out.output_string(sys.con_out, kLongModeEnabled);
+    }
+    else {
+        _ = sys.con_out.output_string(sys.con_out, kWarnLongModeUnsupported);
+    }
 
-    var info_str = std.fmt.bufPrint(print_fmt_buffer[0..], 
-                    "eax=0x{x}, ebx=0x{x}, ecx=0x{x}, edx=0x{x}, {}\n\r",
-                    .{registers[0],registers[2],registers[2],registers[3], vendor_string}
-        ) catch |err| switch (err) {
-        error.NoSpaceLeft => unreachable,
-    };
-    to_wide(&wbuffer, info_str);
-    _ = sys.con_out.output_string(sys.con_out, &wbuffer);
-    
+    _ = sys.con_out.output_string(sys.con_out, W("\n\r"));
+
     comptime const kCodeSeg = "code";
     comptime const kDataSeg = "data";
-    comptime const kNull = "null";
-
-    comptime const kTest = W("hello");
-
-    // unpack and list entries in the GDT
     
-
+    // unpack and list entries in the GDT
     const gdt_entries = gdt.store_gdt();
     for(gdt_entries) | gdt_entry | {
         var seg_name = kCodeSeg;
@@ -108,14 +105,14 @@ fn dump_system_information(img: z_efi.Handle, sys: *z_efi.SystemTable) void {
             seg_name = kDataSeg;
         }
         if( gdt_entry.limit_low == 0 ) {
-            seg_name = kNull;
+            continue;
         }
         comptime var bitness : u8 = 16;
         if ( gdt_entry.size == 1 ) {
             bitness = 32;
         }
         
-        info_str = std.fmt.bufPrint(print_fmt_buffer[0..], 
+        var info_str = std.fmt.bufPrint(print_fmt_buffer[0..], 
                     "{} segment, limit_low = 0x{x}, privilege level {}, {} bit\n\r",
                     .{seg_name, gdt_entry.limit_low, gdt_entry.privilege, bitness}
         ) catch |err| switch (err) {
@@ -130,6 +127,7 @@ fn dump_system_information(img: z_efi.Handle, sys: *z_efi.SystemTable) void {
 //      at any rate we need to do the explicit comptime export below
 pub fn EfiMain(img: z_efi.Handle, sys: *z_efi.SystemTable) callconv(.Stdcall) z_efi.Status {
     
+    _ = sys.con_out.clear_screen(sys.con_out);
     const kHello = W("| - joz64 ------------------------------\n\r\n\r");
     _ = sys.con_out.output_string(sys.con_out, kHello);
 

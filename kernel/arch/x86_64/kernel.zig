@@ -2,7 +2,8 @@
 extern fn _get_cr0() u64;
 extern fn _get_cr3() u64;
 extern fn _get_cr4() u64;
-extern fn _cpuid(leaf: u32, subleaf: u32, registers: [*]u32) void;
+pub extern fn cpuid(leaf: u32, subleaf: u32, registers: [*]u32) void;
+pub extern fn read_msr(msr:u32) u32;
 
 pub fn is_paging_enabled() bool {
     const cr0 = _get_cr0();
@@ -22,16 +23,12 @@ pub fn is_pse_enabled() bool {
 
 pub fn is_x87_emulation_enabled() bool {
     const cr0 = _get_cr0();
-    return (cr0 & 0b10) == 0b10;
+    return (cr0 & 0b100) == 0b100;
 }
 
 pub fn is_task_switch_flag_set() bool {
     const cr0 = _get_cr0();
-    return (cr0 & 0b100) == 0b100;
-}
-
-pub fn cpuid(leaf: u32, subleaf: u32, registers: [*]u32) void {
-    _cpuid(leaf, subleaf, registers);
+    return (cr0 & 0b1000) == 0b1000;
 }
 
 pub fn halt() noreturn {

@@ -18,18 +18,27 @@ _get_crN 3
 // fn _get_cr4() : u64
 _get_crN 4
 
-// _cpuid(leaf: u32, subleaf: u32, registers: [*]u32) void;
-.global _cpuid
-_cpuid:
+// fn _cpuid(leaf: u32, subleaf: u32, registers: [*]u32) void;
+.global cpuid
+cpuid:
 
     pushq   %rdx            // save subleaf
     mov     %rcx, %rdx
     popq    %rcx            // rcx = subleaf
     mov     %rdx, %rax      // rax = leaf
+    
     cpuid
+    
     movl    %eax, 0(%r8)
     movl    %ebx, 4(%r8)
     movl    %ecx, 8(%r8)
     movl    %edx, 12(%r8)
     ret
+
+// fn rdmsr(msr:u32) u32;
+.global read_msr
+read_msr:
+    // ecx contains msr id
+    rdmsr
+    ret 
 
