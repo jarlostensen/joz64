@@ -13,6 +13,8 @@ if %ERRORLEVEL% equ 0 (
 
     if %ERRORLEVEL% equ 0 (
         ..\tools\efigen.exe -i bootx64.efi -o boot.dd 
+        del boot.vdi
+        "c:\Program Files\Oracle\VirtualBox\VBoxManage.exe" convertdd boot.dd boot.vdi --format VDI
     )
 )
 

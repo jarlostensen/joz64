@@ -2,7 +2,7 @@
 extern fn _get_cr0() u64;
 extern fn _get_cr3() u64;
 extern fn _get_cr4() u64;
-
+extern fn _cpuid(leaf: u32, subleaf: u32, registers: [*]u32) void;
 
 pub fn is_paging_enabled() bool {
     const cr0 = _get_cr0();
@@ -31,8 +31,7 @@ pub fn is_task_switch_flag_set() bool {
 }
 
 pub fn cpuid(leaf: u32, subleaf: u32, registers: [*]u32) void {
-    registers[0] = leaf;
-    registers[1] = subleaf;
+    _cpuid(leaf, subleaf, registers);
 }
 
 pub fn halt() noreturn {

@@ -42,7 +42,7 @@ pub const gdt = packed struct {
 
 extern fn _sgdt(gdt_ptr: *gdt) void;
 
-pub fn storeGdt() []gdt_entry {
+pub fn store_gdt() []gdt_entry {
     var gdt_loaded : gdt = undefined;
     _sgdt(&gdt_loaded);
     return gdt_loaded.base[0..((gdt_loaded.limit+1)/@sizeOf(u64))];
