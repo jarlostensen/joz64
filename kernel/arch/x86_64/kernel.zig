@@ -4,6 +4,7 @@ extern fn _get_cr3() u64;
 extern fn _get_cr4() u64;
 pub extern fn cpuid(leaf: u32, subleaf: u32, registers: [*]u32) void;
 pub extern fn read_msr(msr:u32) u32;
+pub extern fn get_eflags() u32;
 
 pub fn is_paging_enabled() bool {
     const cr0 = _get_cr0();
