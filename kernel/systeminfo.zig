@@ -7,9 +7,17 @@ const z_efi = @import("z-efi/efi.zig");
 
 const L = std.unicode.utf8ToUtf16LeStringLiteral;
 
+
+// const SystemInformation = struct {
+
+//     maxCpuid    : u32   = undefined;
+
+
+// };
+
 //NOTE: if I make these comptime inside the function I get a compiler error
 //TODO: report that.
-const kNoPaging = L("Paging is NOT enabled. We shouldn't even be here\n\r");
+const kNoProtect = L("Protected mode NOT enabled. We shouldn't even be here\n\r");
 const kPagingEnabled = L("Paging is enabled\n\r");
 const kPaeEnabled = L("PAE is enabled\n\r");
 const kPseEnabled = L("PSE is enabled\n\r");
@@ -43,32 +51,26 @@ pub fn dumpSystemInformation(img: z_efi.Handle, sys: *z_efi.SystemTable) void {
     // • CR0.EM must be zero
     // • CR0.TS must be zero
 
-    if ( !kernel.is_paging_enabled() ) {
-        _ = sys.con_out.output_string(sys.con_out, kNoPaging);
+    if ( !kernel.isProtectedMode()) {
+        _ = sys.con_out.output_string(sys.con_out, kNoProtect);
         kernel.halt();
     }
-    else {        
+
+    if ( kernel.isPagingEnabled()) {
         _ = sys.con_out.output_string(sys.con_out, kPagingEnabled);
     }
-
-    if ( kernel.is_pae_enabled() ) {        
+    
+    if ( kernel.isPaeEnabled() ) {        
         _ = sys.con_out.output_string(sys.con_out, kPaeEnabled);
     }
 
-    if ( kernel.is_pse_enabled() ) {        
-        _ = sys.con_out.output_string(sys.con_out, kPseEnabled);
-    }
-
-    if ( kernel.is_task_switch_flag_set() ) {        
+    if ( kernel.isTaskSwitchFlagSet() ) {        
         _ = sys.con_out.output_string(sys.con_out, kWarnTSSet);
     }
 
-    if ( kernel.is_x87_emulation_enabled() ) {        
+    if ( kernel.isX87EmulationEnabled() ) {        
         _ = sys.con_out.output_string(sys.con_out, kWarnEMSet);
     }
-
-    var print_fmt_buffer: [256]u8 = undefined;
-    var wbuffer : [256]u16 = undefined;
 
     var registers : [4]u32 = undefined;
     kernel.cpuid(0,0, &registers);
@@ -88,37 +90,20 @@ pub fn dumpSystemInformation(img: z_efi.Handle, sys: *z_efi.SystemTable) void {
         _ = sys.con_out.output_string(sys.con_out, kWarnLongModeUnsupported);
     }
 
-    _ = sys.con_out.output_string(sys.con_out, L("\n\r"));
-
-    comptime const kCodeSeg = "code";
-    comptime const kDataSeg = "data";
-    
-    // unpack and list entries in the GDT
+    // unpack GDT to confirm that we are indeed executing in a 64 bit segment
+    // NOTE: we know it does, because if it didn't then none of this code would execute in the first place
     const gdt_entries = gdt.store_gdt();
-    for(gdt_entries) | gdt_entry | {
-        var seg_name = kCodeSeg;
-        if ( gdt_entry.executable == 0 ) {
-            seg_name = kDataSeg;
+    const cs_selector = kernel.get_cs();
+    for(gdt_entries) | gdt_entry, selector | {
+        if ( gdt_entry.executable != 0 ) {
+            if ( gdt_entry.lm != 0 ) {
+                // long mode bit enabled; this is a 64 bit code segment, and we should be running in it
+                if ( (selector*@sizeOf(gdt.gdt_entry))==cs_selector ) {
+                    _ = sys.con_out.output_string(sys.con_out, L("We are executing in a long-mode enabled code segment"));
+                }                
+                break;
+            }
         }
-        if( gdt_entry.limit_low == 0 ) {
-            continue;
-        }
-        comptime var bitness : u8 = 16;
-        if ( gdt_entry.size == 1 ) {
-            bitness = 32;
-        }
-        
-        //TODO: can bufPrint support wchars..?
-        var info_str = std.fmt.bufPrint(print_fmt_buffer[0..], 
-                    "{} segment, base_low = 0x{x}, limit_low = 0x{x}, privilege level {}, {} bit\n\r",
-                    .{seg_name, gdt_entry.base_low, gdt_entry.limit_low, gdt_entry.privilege, bitness}
-        ) catch |err| switch (err) {
-            error.NoSpaceLeft => unreachable,
-        };
-        utils.toWide(&wbuffer, info_str);
-        _ = sys.con_out.output_string(sys.con_out, &wbuffer);
     }
 }
-
-
 
