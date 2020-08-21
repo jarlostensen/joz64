@@ -4,7 +4,7 @@ pub extern fn read_msr(msr:u32) u32;
 pub extern fn get_eflags() u32;
 pub extern fn get_cs() u32;
 
-fn getCr(comptime number: []const u8) u64 {
+pub fn getCr(comptime number: []const u8) u64 {
     return asm volatile("mov %%cr" ++ number ++ ", %[ret]": [ret] "=r" (-> u64));
 }
 

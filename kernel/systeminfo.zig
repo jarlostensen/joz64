@@ -18,7 +18,9 @@ const kWarnEMSet = L("WARNING: x87 emulation is enabled\n\r");
 const kLongModeEnabled = L("Long mode is enabled\n\r");
 const kWarnLongModeUnsupported = L("WARNING: Long mode is NOT supported\n\r");
 
-pub fn dumpSystemInformation(con_out: uefi.protocols.SimpleTextOutputProtocol) void {
+pub fn dumpSystemInformation() void {
+
+    const con_out = uefi.system_table.con_out.?;
 
     // from the UEFI 2.6 manual the "prescribed execution environment" shall be:
     //
@@ -52,15 +54,15 @@ pub fn dumpSystemInformation(con_out: uefi.protocols.SimpleTextOutputProtocol) v
         _ = con_out.outputString( kPagingEnabled);
     }
     
-    if ( kernel.isPaeEnabled() ) {        
+    if ( kernel.isPaeEnabled() ) {
         _ = con_out.outputString( kPaeEnabled);
     }
 
-    if ( kernel.isTaskSwitchFlagSet() ) {        
+    if ( kernel.isTaskSwitchFlagSet() ) {
         _ = con_out.outputString( kWarnTSSet);
     }
 
-    if ( kernel.isX87EmulationEnabled() ) {        
+    if ( kernel.isX87EmulationEnabled() ) {
         _ = con_out.outputString( kWarnEMSet);
     }
 
@@ -68,6 +70,10 @@ pub fn dumpSystemInformation(con_out: uefi.protocols.SimpleTextOutputProtocol) v
     kernel.cpuid(0,0, &registers);
     const max_leaf = registers[0];
     const eflags = kernel.get_eflags();
+
+    var buffer : [128]u8 = undefined;
+    var wbuffer : [128]u16 = undefined;
+    utils.efiPrint(buffer[0..], wbuffer[0..], "max leaf is 0x{x}, eFlags = 0b{b}\n\r", .{max_leaf, eflags});
 
     // check if long-mode is available and enabled (IT SHOULD BE!)
     kernel.cpuid(0x80000001, 0, &registers);
@@ -84,7 +90,7 @@ pub fn dumpSystemInformation(con_out: uefi.protocols.SimpleTextOutputProtocol) v
 
     // unpack GDT to confirm that we are indeed executing in a 64 bit segment
     // NOTE: we know it does, because if it didn't then none of this code would execute in the first place
-    const gdt_entries = gdt.store_gdt();
+    const gdt_entries = gdt.storeGdt();
     const cs_selector = kernel.get_cs();
     for(gdt_entries) | gdt_entry, selector | {
         if ( gdt_entry.executable != 0 ) {
