@@ -2,8 +2,11 @@
 
 // ==============================================================================
 // GDT
-// https://wiki.osdev.org/Global_Descriptor_Table
-
+// chapter 4.8.1 and 4.8.2 of the AMD64 Architecture Programmer's Manual Volume 2 is the best source for this
+// NOTE: 
+//  for data segments: in long mode all of the fields except "present" are ignored.
+//  for code segments: in long mode all of the fields except D, LM, privilege, present, and dc are ignored.
+//
 pub const gdt_entry = packed struct {
     limit_low: u16,
     base_low: u16,
@@ -27,10 +30,13 @@ pub const gdt_entry = packed struct {
     privilege: u2,
     // 7 selectors can be marked as “not present” so they can’t be used. Normally, set it to 1.
     present: u1,
+    
     limit_high: u4,
-    zero: u1,
-    lb: u1,
-    size: u1,
+
+    avl: u1,
+    // if executable=1; in long mode LM=1 and d=0
+    lm: u1,
+    d: u1,
     granularity: u1,
     base_high: u8
 };
@@ -40,11 +46,11 @@ pub const gdt = packed struct {
     base:   [*]gdt_entry
 };
 
-extern fn _sgdt(gdt_ptr: *gdt) void;
-
-pub fn store_gdt() []gdt_entry {
+pub fn storeGdt() []gdt_entry {
     var gdt_loaded : gdt = undefined;
-    _sgdt(&gdt_loaded);
+    asm volatile ("sgdt %[input]"
+        : [input] "=m" (gdt_loaded)
+    );
     return gdt_loaded.base[0..((gdt_loaded.limit+1)/@sizeOf(u64))];
 }
 

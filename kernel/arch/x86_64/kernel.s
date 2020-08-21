@@ -1,29 +1,35 @@
 // fn _sgdt(gdt_ptr: *gdt) void;
-.global _sgdt
-_sgdt:    
-    sgdt    (%rcx)
-    ret
+// .global _sgdt
+// _sgdt:    
+//    sgdt    (%rcx)
+//    ret
 
 // fn get_eflags() u32
 .global get_eflags
 get_eflags:
-    pushf
+    pushfq
     popq    %rax
     ret
 
-.macro  _get_crN   N
-.global _get_cr\N
-_get_cr\N:
-    mov %cr\N, %rax
+.global get_cs
+get_cs:
+    xor     %rax,%rax
+    mov     %cs, %ax
     ret
-.endm
+
+//.macro  _get_crN   N
+//.global _get_cr\N
+//_get_cr\N:
+    //mov %cr\N, %rax
+    //ret
+//.endm
 
 // fn _get_cr0() : u64
-_get_crN 0
+//_get_crN 0
 // fn _get_cr3() : u64
-_get_crN 3
+//_get_crN 3
 // fn _get_cr4() : u64
-_get_crN 4
+//_get_crN 4
 
 // fn _cpuid(leaf: u32, subleaf: u32, registers: [*]u32) void;
 .global cpuid
