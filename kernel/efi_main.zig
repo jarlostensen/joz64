@@ -1,9 +1,7 @@
 const std = @import("std");
-const builtin = @import("builtin");
-const z_efi = @import("z-efi/efi.zig");
 const utils = @import("utils.zig");
 const systeminfo = @import("systeminfo.zig");
-const kernel = @import("arch/x86_64/kernel.zig");
+const kernel = @import("kernel.zig");
 
 const uefi = std.os.uefi;
 const L = std.unicode.utf8ToUtf16LeStringLiteral;
@@ -14,7 +12,10 @@ pub fn main() void {
     _ = con_out.clearScreen();
     const kHello = L("| - joz64 ------------------------------\n\r\n\r");
     _ = con_out.outputString(kHello);
-
+    
+    var kmem = kernel.Memory.SystemAllocator.init();
+    const alloc = std.heap.ArenaAllocator.init(&kmem.allocator);
+    
     systeminfo.dumpSystemInformation();
 
     const kGoodbye = L("\n\rgoing to sleep...");
