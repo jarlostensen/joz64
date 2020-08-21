@@ -3,17 +3,9 @@ const builtin = @import("builtin");
 const gdt = @import("gdt.zig");
 const kernel = @import("arch/x86_64/kernel.zig");
 const utils = @import("utils.zig");
-const z_efi = @import("z-efi/efi.zig");
 
 const L = std.unicode.utf8ToUtf16LeStringLiteral;
-
-
-// const SystemInformation = struct {
-
-//     maxCpuid    : u32   = undefined;
-
-
-// };
+const uefi = std.os.uefi;
 
 //NOTE: if I make these comptime inside the function I get a compiler error
 //TODO: report that.
@@ -26,7 +18,7 @@ const kWarnEMSet = L("WARNING: x87 emulation is enabled\n\r");
 const kLongModeEnabled = L("Long mode is enabled\n\r");
 const kWarnLongModeUnsupported = L("WARNING: Long mode is NOT supported\n\r");
 
-pub fn dumpSystemInformation(img: z_efi.Handle, sys: *z_efi.SystemTable) void {
+pub fn dumpSystemInformation(con_out: uefi.protocols.SimpleTextOutputProtocol) void {
 
     // from the UEFI 2.6 manual the "prescribed execution environment" shall be:
     //
@@ -52,24 +44,24 @@ pub fn dumpSystemInformation(img: z_efi.Handle, sys: *z_efi.SystemTable) void {
     // • CR0.TS must be zero
 
     if ( !kernel.isProtectedMode()) {
-        _ = sys.con_out.output_string(sys.con_out, kNoProtect);
+        _ = con_out.outputString( kNoProtect);
         kernel.halt();
     }
 
     if ( kernel.isPagingEnabled()) {
-        _ = sys.con_out.output_string(sys.con_out, kPagingEnabled);
+        _ = con_out.outputString( kPagingEnabled);
     }
     
     if ( kernel.isPaeEnabled() ) {        
-        _ = sys.con_out.output_string(sys.con_out, kPaeEnabled);
+        _ = con_out.outputString( kPaeEnabled);
     }
 
     if ( kernel.isTaskSwitchFlagSet() ) {        
-        _ = sys.con_out.output_string(sys.con_out, kWarnTSSet);
+        _ = con_out.outputString( kWarnTSSet);
     }
 
     if ( kernel.isX87EmulationEnabled() ) {        
-        _ = sys.con_out.output_string(sys.con_out, kWarnEMSet);
+        _ = con_out.outputString( kWarnEMSet);
     }
 
     var registers : [4]u32 = undefined;
@@ -84,10 +76,10 @@ pub fn dumpSystemInformation(img: z_efi.Handle, sys: *z_efi.SystemTable) void {
             and
         ( (efr_msr & (1<<10)) == (1<<10) )
         ) {
-        _ = sys.con_out.output_string(sys.con_out, kLongModeEnabled);
+        _ = con_out.outputString( kLongModeEnabled);
     }
     else {
-        _ = sys.con_out.output_string(sys.con_out, kWarnLongModeUnsupported);
+        _ = con_out.outputString( kWarnLongModeUnsupported);
     }
 
     // unpack GDT to confirm that we are indeed executing in a 64 bit segment
@@ -99,7 +91,7 @@ pub fn dumpSystemInformation(img: z_efi.Handle, sys: *z_efi.SystemTable) void {
             if ( gdt_entry.lm != 0 ) {
                 // long mode bit enabled; this is a 64 bit code segment, and we should be running in it
                 if ( (selector*@sizeOf(gdt.gdt_entry))==cs_selector ) {
-                    _ = sys.con_out.output_string(sys.con_out, L("We are executing in a long-mode enabled code segment"));
+                    _ = con_out.outputString( L("We are executing in a long-mode enabled code segment"));
                 }                
                 break;
             }
