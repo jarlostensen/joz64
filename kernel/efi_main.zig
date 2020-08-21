@@ -8,9 +8,7 @@ const kernel = @import("arch/x86_64/kernel.zig");
 const uefi = std.os.uefi;
 const L = std.unicode.utf8ToUtf16LeStringLiteral;
 
-//NOTE:0.6.0: it is not clear if "extern" or "pub" is the supposed choice, but extern causes a conflict and pub causes EfiMain not to be found, 
-//      at any rate we need to do the explicit comptime export below
-pub fn EfiMain(img: uefi.Handle, sys: *uefi.tables.SystemTable) callconv(.Stdcall) uefi.Status {
+pub fn main() void {
     
     const con_out = uefi.system_table.con_out.?;
     _ = con_out.clearScreen();
@@ -24,9 +22,3 @@ pub fn EfiMain(img: uefi.Handle, sys: *uefi.tables.SystemTable) callconv(.Stdcal
 
     kernel.halt();
 }
-
-//NOTE:0.6.0: this is probably only needed as a workaround for some missing functionality elsewhere
-comptime {
-    @export(EfiMain, .{ .name = "EfiMain" });
-}
-
