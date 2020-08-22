@@ -22,6 +22,8 @@ pub fn dumpSystemInformation() void {
 
     const con_out = uefi.system_table.con_out.?;
 
+    
+    
     // from the UEFI 2.6 manual the "prescribed execution environment" shall be:
     //
     // • Single processor mode.
@@ -73,6 +75,7 @@ pub fn dumpSystemInformation() void {
 
     var buffer : [128]u8 = undefined;
     var wbuffer : [128]u16 = undefined;
+
     utils.efiPrint(buffer[0..], wbuffer[0..], "max leaf is 0x{x}, eFlags = 0b{b}\n\r", .{max_leaf, eflags});
 
     // check if long-mode is available and enabled (IT SHOULD BE!)
@@ -88,6 +91,8 @@ pub fn dumpSystemInformation() void {
         _ = con_out.outputString( kWarnLongModeUnsupported);
     }
 
+    const ra = @returnAddress();
+
     // unpack GDT to confirm that we are indeed executing in a 64 bit segment
     // NOTE: we know it does, because if it didn't then none of this code would execute in the first place
     const gdt_entries = gdt.storeGdt();
@@ -97,7 +102,8 @@ pub fn dumpSystemInformation() void {
             if ( gdt_entry.lm != 0 ) {
                 // long mode bit enabled; this is a 64 bit code segment, and we should be running in it
                 if ( (selector*@sizeOf(gdt.gdt_entry))==cs_selector ) {
-                    _ = con_out.outputString( L("We are executing in a long-mode enabled code segment"));
+                    utils.efiPrint(buffer[0..], wbuffer[0..], "this code is executing around 0x{x}, in a 64 bit code segment\n\r", 
+                        .{ra});
                 }                
                 break;
             }
