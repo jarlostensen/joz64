@@ -20,8 +20,6 @@ pub const system_allocator = &system_allocator_state;
 // this is filled in by the init function
 const MemorySystemInfo = struct {
     total_available_memory: usize = undefined,
-    memory_map_key: usize = undefined,
-    memory_map: [*]uefi.tables.MemoryDescriptor = undefined,
 };
 var memory_system_info = MemorySystemInfo{};
 
@@ -94,21 +92,45 @@ fn resize(allocator: *Allocator,
             //TODO: better error
             return error.OutOfMemory;
         }
+        
         const freed_size = alloc_header_ptr.size;
-
-        // debug
-        //
-        // const L = std.unicode.utf8ToUtf16LeStringLiteral; 
-        // const con_out = uefi.system_table.con_out.?;
-        // var buffer: [256]u8 = undefined;
-        // var wbuffer: [256]u16 = undefined;
-        // utils.efiPrint(buffer[0..], wbuffer[0..], "resize: base = 0x{x}, size = {}\n\r", 
-        //     .{alloc_header_ptr.base, alloc_header_ptr.size}
-        // );
-
-         _ = uefi.system_table.boot_services.?.freePool(alloc_header_ptr.base);
+        _ = uefi.system_table.boot_services.?.freePool(alloc_header_ptr.base);
         return freed_size;
 }
+
+// helper to get a fresh memory map from the boot service
+const MemoryMap = struct {
+    memory_map: [*]uefi.tables.MemoryDescriptor = undefined,
+    memory_map_size: usize = 0,
+    memory_map_key : usize = undefined,
+    descriptor_size: usize = undefined,
+    descriptor_version: u32 = undefined,
+
+    pub fn refresh(self: *MemoryMap) void {
+    const boot_services = uefi.system_table.boot_services.?;
+        const MemoryType = uefi.tables.MemoryType;
+
+        //NOTE: this isn't super efficient memory management, but it can be optimised later
+        if ( self.memory_map_size>0 ) {            
+            _ = boot_services.freePool(@ptrCast([*]align(8) u8, &self.memory_map));
+            self.memory_map_size = 0;
+        }
+
+        _ = boot_services.getMemoryMap(&self.memory_map_size, self.memory_map, &self.memory_map_key, &self.descriptor_size, &self.descriptor_version);
+        // room for allocations from the subsequent call to alloc_pool
+        self.memory_map_size += 2*self.descriptor_size;
+        _ = boot_services.allocatePool(MemoryType.LoaderData, self.memory_map_size, @ptrCast(*[*]align(8) u8, &self.memory_map));
+        // we now have enough memory to call this again
+        _ = boot_services.getMemoryMap(&self.memory_map_size, self.memory_map, &self.memory_map_key, &self.descriptor_size, &self.descriptor_version);
+}
+};
+var memory_map_state = MemoryMap{};
+// e.g.
+// ...
+//  kernel.Memory.memory_map.refresh();
+//  _ = boot_services.exitBootServices(uefi.handle, kernel.Memory.memory_map.memory_map_key);
+// ...
+pub const memory_map = &memory_map_state;
 
 // gets the system memory map from the UEFI boot services and collects bits of information needed for later
 pub fn init() void {
@@ -116,23 +138,10 @@ pub fn init() void {
     const con_out = uefi.system_table.con_out.?;
     _ = con_out.outputString(L("SystemAllocator::init\n\r"));
 
-    // get the memory map
-    const boot_services = uefi.system_table.boot_services.?;
+    memory_map.refresh();
+
     const MemoryType = uefi.tables.MemoryType;
-    var memory_map: [*]uefi.tables.MemoryDescriptor = undefined;
-    var memory_map_size: usize = 0;
-    var memory_map_key : usize = undefined;
-    var descriptor_size: usize = undefined;
-    var descriptor_version: u32 = undefined;
-
-    _ = boot_services.getMemoryMap(&memory_map_size, memory_map, &memory_map_key, &descriptor_size, &descriptor_version);
-    const memory_desc_entries = memory_map_size / descriptor_size;
-    // room for allocations from the subsequent call to alloc_pool
-    memory_map_size += 2*descriptor_size;
-    _ = boot_services.allocatePool(MemoryType.LoaderData, memory_map_size, @ptrCast(*[*]align(8) u8, &memory_map));
-
-    // we now have enough memory to call this again
-    _ = boot_services.getMemoryMap(&memory_map_size, memory_map, &memory_map_key, &descriptor_size, &descriptor_version);
+    const memory_desc_entries = memory_map.memory_map_size / memory_map.descriptor_size;
 
     var buff: [256]u8 = undefined;
     var wbuff: [256]u16 = undefined;
@@ -142,7 +151,7 @@ pub fn init() void {
     var total_memory : usize = 0;
     var i: usize = 0;
     while (i < memory_desc_entries) : (i += 1) {
-        const desc : *uefi.tables.MemoryDescriptor = &memory_map[i];
+        const desc : *uefi.tables.MemoryDescriptor = &memory_map.memory_map[i];
         if ( desc.type == MemoryType.ConventionalMemory ) { 
             total_memory += desc.number_of_pages;
         }
@@ -171,8 +180,5 @@ pub fn init() void {
 
     total_memory *= std.mem.page_size;
     utils.efiPrint(buff[0..], wbuff[0..], "    there are {} MBytes available\n\r", .{total_memory/0x100000});
-
     memory_system_info.total_available_memory = total_memory;
-    memory_system_info.memory_map = memory_map;
-    memory_system_info.memory_map_key = memory_map_key;
 }

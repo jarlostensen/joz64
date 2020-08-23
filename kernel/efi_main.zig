@@ -29,8 +29,7 @@ pub fn main() void {
 
     const con_out = uefi.system_table.con_out.?;
     _ = con_out.clearScreen();
-    const kHello = L("| - joz64 ------------------------------\n\r\n\r");
-    _ = con_out.outputString(kHello);
+    _ = con_out.outputString(L("| - joz64 ------------------------------\n\r\n\r"));
 
     // initialise the memory system and do a little allocation and free test
     kernel.Memory.init();
@@ -39,8 +38,11 @@ pub fn main() void {
     _ = con_out.outputString(L("-----------------------------\n\r"));
     systeminfo.dumpSystemInformation();
 
-    const kGoodbye = L("\n\rgoing to sleep...");
-    _ = con_out.outputString(kGoodbye);
+    _ = con_out.outputString(L("\n\rexiting and halting..."));
+    kernel.Memory.memory_map.refresh();
+    const boot_services = uefi.system_table.boot_services.?;
+    _ = boot_services.exitBootServices(uefi.handle, kernel.Memory.memory_map.memory_map_key);
 
+    _ = con_out.outputString(L("YOU WON'T SEE THIS!"));
     kernel.halt();
 }
