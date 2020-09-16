@@ -3,6 +3,8 @@ const utils = @import("utils.zig");
 const systeminfo = @import("systeminfo.zig");
 const kernel = @import("kernel.zig");
 
+const mp = @import("mpservicesprotocol.zig");
+
 const uefi = std.os.uefi;
 const L = std.unicode.utf8ToUtf16LeStringLiteral;
 
@@ -25,6 +27,23 @@ fn allocationTests() void {
     allocator.free(aligned_slice);
 }
 
+fn testMpProtocol() void {
+    const con_out = uefi.system_table.con_out.?;
+    const boot_services = uefi.system_table.boot_services.?;
+    var mpprot:*mp.MpProtocol = undefined;
+    const result = boot_services.locateProtocol(&mp.MpProtocol.guid, null, @ptrCast(*?*c_void,&mpprot));
+    if ( result == uefi.Status.Success ) {
+        _ = con_out.outputString(L("\tLocated MP protocol\n\r"));
+    }
+    else {
+        var buffer: [256]u8 = undefined;
+        var wbuffer: [256]u16 = undefined;
+            utils.efiPrint(buffer[0..], wbuffer[0..], "\tFailed to locate MP protocol: {x}\n\r", 
+            .{result}
+        );        
+    }
+}
+
 pub fn main() void {
 
     const con_out = uefi.system_table.con_out.?;
@@ -34,15 +53,19 @@ pub fn main() void {
     // initialise the memory system and do a little allocation and free test
     kernel.Memory.init();
     allocationTests();
+
+    testMpProtocol();
     
     _ = con_out.outputString(L("-----------------------------\n\r"));
     systeminfo.dumpSystemInformation();
 
     _ = con_out.outputString(L("\n\rexiting and halting..."));
+
     kernel.Memory.memory_map.refresh();
     const boot_services = uefi.system_table.boot_services.?;
-    _ = boot_services.exitBootServices(uefi.handle, kernel.Memory.memory_map.memory_map_key);
 
-    _ = con_out.outputString(L("YOU WON'T SEE THIS!"));
+    //zzz: leaving this in makes qemu exit right away, for some reason...perhaps it's a...crash?
+    //_ = boot_services.exitBootServices(uefi.handle, kernel.Memory.memory_map.memory_map_key);
+
     kernel.halt();
 }
