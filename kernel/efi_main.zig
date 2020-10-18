@@ -34,6 +34,16 @@ fn testMpProtocol() void {
     const result = boot_services.locateProtocol(&mp.MpProtocol.guid, null, @ptrCast(*?*c_void,&mpprot));
     if ( result == uefi.Status.Success ) {
         _ = con_out.outputString(L("\tLocated MP protocol\n\r"));
+        var thisProcessorId:usize = undefined;
+        if ( mpprot.WhoAmI(&thisProcessorId) == uefi.Status.Success ) {
+            var numberOfProcessors:usize = undefined;
+            var numberOfEnabledProcessors:usize = undefined;
+            _ = mpprot.GetNumberOfProcessors(&numberOfProcessors, &numberOfEnabledProcessors);            
+            var buffer: [256]u8 = undefined;
+            var wbuffer: [256]u16 = undefined;
+            utils.efiPrint(buffer[0..], wbuffer[0..], "    there are {} processors, {} are enabled, and this is processor {x}\n\r", 
+                .{numberOfProcessors, numberOfEnabledProcessors, thisProcessorId});
+        }
     }
     else {
         var buffer: [256]u8 = undefined;

@@ -12,7 +12,8 @@ pub fn build(b: *Builder) void {
         .cpu_arch = Target.Cpu.Arch.x86_64,
         .os_tag = Target.Os.Tag.uefi,
         .abi = Target.Abi.msvc,
-    });    
+    });
+    exe.force_pic = true;
     exe.setOutputDir("build");
     b.default_step.dependOn(&exe.step);
 }

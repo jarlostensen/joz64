@@ -15,6 +15,8 @@ if %ERRORLEVEL% equ 0 (
         ..\tools\efigen.exe -i bootx64.efi -o boot.dd 
         del boot.vdi
         "c:\Program Files\Oracle\VirtualBox\VBoxManage.exe" convertdd boot.dd boot.vdi --format VDI
+        rem NOTE: this is just so that I don't have to re-load the vdi in VirtualBox every time it builds
+        "c:\Program Files\Oracle\VirtualBox\VBoxManage.exe" internalcommands sethduuid boot.vdi 70c248ad-8295-4f18-b307-54ad0bd1e9df
     )
 )
 
