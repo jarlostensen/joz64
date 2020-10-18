@@ -2,6 +2,7 @@ const std = @import("std");
 const utils = @import("utils.zig");
 const systeminfo = @import("systeminfo.zig");
 const kernel = @import("kernel.zig");
+const vmx = @import("arch/x86_64/vmx.zig");
 
 const mp = @import("mpservicesprotocol.zig");
 
@@ -38,11 +39,12 @@ fn testMpProtocol() void {
         if ( mpprot.WhoAmI(&thisProcessorId) == uefi.Status.Success ) {
             var numberOfProcessors:usize = undefined;
             var numberOfEnabledProcessors:usize = undefined;
+            const vmxEnabled = vmx.vmxCheck();
             _ = mpprot.GetNumberOfProcessors(&numberOfProcessors, &numberOfEnabledProcessors);            
             var buffer: [256]u8 = undefined;
             var wbuffer: [256]u16 = undefined;
-            utils.efiPrint(buffer[0..], wbuffer[0..], "    there are {} processors, {} are enabled, and this is processor {x}\n\r", 
-                .{numberOfProcessors, numberOfEnabledProcessors, thisProcessorId});
+            utils.efiPrint(buffer[0..], wbuffer[0..], "    there are {} processors, {} are enabled, and this is processor {x}. VMX is {}\n\r", 
+                .{numberOfProcessors, numberOfEnabledProcessors, thisProcessorId, vmxEnabled});
         }
     }
     else {
