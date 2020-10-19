@@ -47,3 +47,14 @@ pub fn halt() noreturn {
     unreachable;
 }
 
+pub fn rdtsc() u64 {
+    var val:u64 = 0;
+    asm volatile (
+        \\rdtsc
+        \\shl $32, %%rax
+        \\or %%rcx, %%rax
+        \\mov %%rax, %[val]
+        : [val] "=m" (val) 
+    );
+    return val;
+}
