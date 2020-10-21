@@ -5,6 +5,7 @@ const kernel = @import("kernel.zig");
 
 const vmx = @import("arch/x86_64/vmx.zig");
 const kernel_x86_64 = @import("arch/x86_64/kernel.zig");
+const apic = @import("arch/x86_64/apic.zig");
 
 const mp = @import("multi_processor_protocol.zig");
 const uefi_debug = @import("debug_protocol.zig");
@@ -96,7 +97,7 @@ fn testDebugFunction() void {
 
 fn testTimeServices() void {
     const con_out = uefi.system_table.con_out.?;
-    _ = con_out.outputString(L("Time services  ======================\n\r"));
+    _ = con_out.outputString(L("\n\rTime services  ======================\n\r"));
 
     const rt_services = uefi.system_table.runtime_services;
     var time:uefi.Time = undefined;
@@ -120,16 +121,16 @@ fn apIdleFunc(ptr:*c_void) callconv(.C) void {
     // just idle for a while for now, counting up
     const start = kernel_x86_64.rdtsc();
     var counter = start;
-    while((counter-start) < 10000) {
+    while((counter-start) < 10000000) {
         counter  = kernel_x86_64.rdtsc();
         ctx.counter += 1;
         asm volatile ("pause");
-    }    
+    }
 }
 
 fn testMpProtocol() void {
     const con_out = uefi.system_table.con_out.?;
-    _ = con_out.outputString(L("Multi Processor checks  ======================\n\r"));
+    _ = con_out.outputString(L("\n\rMulti Processor checks  ======================\n\r"));
 
     const boot_services = uefi.system_table.boot_services.?;
     var mpprot:*mp.MpProtocol = undefined;
@@ -158,7 +159,7 @@ fn testMpProtocol() void {
 
             var ctx = ApIdleContext{.counter=0};
             apIdleFunc(&ctx);
-            utils.efiPrint(buffer[0..], wbuffer[0..], "    idled for a while, counter is {}\n\r", 
+            utils.efiPrint(buffer[0..], wbuffer[0..], "    idled for a while, counter is now {}\n\r", 
                 .{ctx.processorId});
         }
     }
@@ -171,23 +172,35 @@ fn testMpProtocol() void {
     }
 }
 
+fn testApicFunctions() void {
+    const con_out = uefi.system_table.con_out.?;
+    _ = con_out.outputString(L("\n\rAPIC and PIT checks  ======================\n\r"));
+    const boot_services = uefi.system_table.boot_services.?;
+    var mpprot:*mp.MpProtocol = undefined;
+    const result = boot_services.locateProtocol(&mp.MpProtocol.guid, null, @ptrCast(*?*c_void,&mpprot));
+    if ( result == uefi.Status.Success ) {
+        if ( apic.InitializePerCpu(kernel.Memory.system_allocator, mpprot) ) {
+            apic.dumpApicInfo();
+        }
+    }
+}
+
 pub fn main() void {
 
     const con_out = uefi.system_table.con_out.?;
     _ = con_out.clearScreen();
-    _ = con_out.outputString(L("| - joz64 ------------------------------\n\r\n\r"));
+    _ = con_out.outputString(L("|--joz64 ------------------------------\n\r\n\r"));
 
     const earlier = kernel_x86_64.rdtsc();
 
     // initialise the memory system and do a little allocation and free test
     kernel.Memory.init();
-    allocationTests();
-
-    testMpProtocol();
-    testTimeServices();
+    
+    testApicFunctions();
+    //testTimeServices();
     //testHypervisorFunctions();
     //testDebugFunction();
-    
+
     _ = con_out.outputString(L("-----------------------------\n\r"));
     systeminfo.dumpSystemInformation();
 

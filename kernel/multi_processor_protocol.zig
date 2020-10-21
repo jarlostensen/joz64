@@ -37,8 +37,8 @@ pub const MpProtocol = extern struct {
 
     _getNumberOfProcessors: fn (*const MpProtocol, *usize, *usize) callconv(.C) Status,
     _getProcessorInfo: fn(*const MpProtocol, usize, *ProcessorInformation) callconv(.C) Status,
-    _startupAllAps: fn(*const MpProtocol, ApProcedure, usize, uefi.Event, usize, *c_void, *bool) callconv(.C) Status,
-    _startupThisAp: fn(*const MpProtocol, ApProcedure, usize, uefi.Event, usize, *c_void, *bool) callconv(.C) Status,
+    _startupAllAps: fn(*const MpProtocol, ApProcedure, usize, ?uefi.Event, usize, ?*c_void, ?*bool) callconv(.C) Status,
+    _startupThisAp: fn(*const MpProtocol, ApProcedure, usize, ?uefi.Event, usize, ?*c_void, ?*bool) callconv(.C) Status,
     _switchBsp: fn(*const MpProtocol, usize, bool) callconv(.C) Status,
     _enableDisableAp: fn(*const MpProtocol, usize, bool, healthFlag: *u32) callconv(.C) Status,
     _whoAmI: fn(*const MpProtocol, *usize) callconv(.C) Status,
@@ -59,7 +59,7 @@ pub const MpProtocol = extern struct {
     // both blocking and non-blocking requests. The non-blocking requests use EFI
     // events so the BSP can detect when the APs have finished. This service may only
     // be called from the BSP.
-    pub fn StartupAllAps(self: *const MpProtocol, procedure: ApProcedure, processorNumber: usize, waitEvent: uefi.Event, timeOutMs:usize, procArg: *c_void, finished: *bool) Status {
+    pub fn StartupAllAps(self: *const MpProtocol, procedure: ApProcedure, processorNumber: usize, waitEvent: ?uefi.Event, timeOutMs:usize, procArg: ?*c_void, finished: ?*bool) Status {
         return self._startupAllAps(self,procedure,processorNumber, waitEvent, timeOutMs, procArg, finished);
     }
     // This service lets the caller get one enabled AP to execute a caller-provided
@@ -67,7 +67,7 @@ pub const MpProtocol = extern struct {
     // of the AP or just proceed with the next task by using the EFI event mechanism.
     // See EFI_MP_SERVICES_PROTOCOL.StartupAllAPs() for more details on non-blocking
     // execution support.  This service may only be called from the BSP.
-    pub fn StartupThisAp(self: *const MpProtocol, procedure: ApProcedure, processorNumber: usize, waitEvent: uefi.Event, timeOutMs:usize, procArg: *c_void, finished: *bool) Status {
+    pub fn StartupThisAp(self: *const MpProtocol, procedure: ApProcedure, processorNumber: usize, waitEvent: ?uefi.Event, timeOutMs:usize, procArg: ?*c_void, finished: ?*bool) Status {
         return self._startupThisAp(self,procedure,processorNumber, waitEvent, timeOutMs, procArg, finished);
     }
     // This service switches the requested AP to be the BSP from that point onward.

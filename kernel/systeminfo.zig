@@ -80,7 +80,7 @@ pub fn dumpSystemInformation() void {
 
     // check if long-mode is available and enabled (IT SHOULD BE!)
     kernel.cpuid(0x80000001, 0, &registers);
-    const efr_msr = kernel.read_msr(0xc0000080);
+    const efr_msr = kernel.readMsr(0xc0000080);
     if ( (registers[3] & (1<<29))==(1<<29) 
             and
         ( (efr_msr & (1<<10)) == (1<<10) )
