@@ -1,7 +1,7 @@
 const std = @import("std");
 const builtin = @import("builtin");
 const gdt = @import("gdt.zig");
-const kernel = @import("arch/x86_64/kernel.zig");
+const platform = @import("arch/x86_64/platform.zig");
 const utils = @import("utils.zig");
 
 const L = std.unicode.utf8ToUtf16LeStringLiteral;
@@ -47,31 +47,31 @@ pub fn dumpSystemInformation() void {
     // • CR0.EM must be zero
     // • CR0.TS must be zero
 
-    if ( !kernel.isProtectedMode()) {
+    if ( !platform.isProtectedMode()) {
         _ = con_out.outputString( kNoProtect);
-        kernel.halt();
+        platform.halt();
     }
 
-    if ( kernel.isPagingEnabled()) {
+    if ( platform.isPagingEnabled()) {
         _ = con_out.outputString( kPagingEnabled);
     }
     
-    if ( kernel.isPaeEnabled() ) {
+    if ( platform.isPaeEnabled() ) {
         _ = con_out.outputString( kPaeEnabled);
     }
 
-    if ( kernel.isTaskSwitchFlagSet() ) {
+    if ( platform.isTaskSwitchFlagSet() ) {
         _ = con_out.outputString( kWarnTSSet);
     }
 
-    if ( kernel.isX87EmulationEnabled() ) {
+    if ( platform.isX87EmulationEnabled() ) {
         _ = con_out.outputString( kWarnEMSet);
     }
 
     var registers : [4]u32 = undefined;
-    kernel.cpuid(0,0, &registers);
+    platform.cpuid(0,0, &registers);
     const max_leaf = registers[0];
-    const eflags = kernel.get_eflags();
+    const eflags = platform.get_eflags();
 
     var buffer : [128]u8 = undefined;
     var wbuffer : [128]u16 = undefined;
@@ -79,8 +79,8 @@ pub fn dumpSystemInformation() void {
     utils.efiPrint(buffer[0..], wbuffer[0..], "max leaf is 0x{x}, eFlags = 0b{b}\n\r", .{max_leaf, eflags});
 
     // check if long-mode is available and enabled (IT SHOULD BE!)
-    kernel.cpuid(0x80000001, 0, &registers);
-    const efr_msr = kernel.readMsr(0xc0000080);
+    platform.cpuid(0x80000001, 0, &registers);
+    const efr_msr = platform.readMsr(0xc0000080);
     if ( (registers[3] & (1<<29))==(1<<29) 
             and
         ( (efr_msr & (1<<10)) == (1<<10) )
@@ -96,7 +96,7 @@ pub fn dumpSystemInformation() void {
     // unpack GDT to confirm that we are indeed executing in a 64 bit segment
     // NOTE: we know it does, because if it didn't then none of this code would execute in the first place
     const gdt_entries = gdt.storeGdt();
-    const cs_selector = kernel.get_cs();
+    const cs_selector = platform.get_cs();
     for(gdt_entries) | gdt_entry, selector | {
         if ( gdt_entry.executable != 0 ) {
             if ( gdt_entry.lm != 0 ) {

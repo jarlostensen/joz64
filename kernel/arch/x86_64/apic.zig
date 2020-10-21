@@ -1,5 +1,5 @@
 const std = @import("std");
-const kernel = @import("kernel.zig");
+const platform = @import("platform.zig");
 const multiprocessor = @import("../../multi_processor_protocol.zig");
 
 const utils = @import("../../utils.zig");
@@ -52,22 +52,22 @@ const PIT_MODE_ONESHOT = 0x01;
 
 pub fn waitOne55msInterval() void {
 
-    // kernel.outByte(PIT_COMMAND, PIT_COUNTER_2 | PIT_MODE_ONESHOT);
-    // kernel.outByte(PIT_DATA_2, 0xff);
-    // kernel.outByte(PIT_DATA_2, 0xff);
+    // platform.outByte(PIT_COMMAND, PIT_COUNTER_2 | PIT_MODE_ONESHOT);
+    // platform.outByte(PIT_DATA_2, 0xff);
+    // platform.outByte(PIT_DATA_2, 0xff);
 
     // // channel 2 enable (see for example a nice overview of the 8254 here https://www.cs.usfca.edu/~cruse/cs630f08/lesson15.ppt)
-    // const enabled_8254 = kernel.inByte(0x61);
-    // kernel.outByte(0x61,(enabled_8254 & 0xfd) | 0x01);
+    // const enabled_8254 = platform.inByte(0x61);
+    // platform.outByte(0x61,(enabled_8254 & 0xfd) | 0x01);
 
-    // _ = kernel.inByte(PIT_DATA_2);
-    // var msb = kernel.inByte(PIT_DATA_2);
+    // _ = platform.inByte(PIT_DATA_2);
+    // var msb = platform.inByte(PIT_DATA_2);
     // while(msb!=0) {
-    //     _ = kernel.inByte(PIT_DATA_2);
-    //     msb = kernel.inByte(PIT_DATA_2);
+    //     _ = platform.inByte(PIT_DATA_2);
+    //     msb = platform.inByte(PIT_DATA_2);
     // }
 
-    kernel.pitWaitOneShot();    
+    platform.pitWaitOneShot();    
 }
 
 fn isLocalApicAvailable() bool {
@@ -92,7 +92,7 @@ fn readApicRegister32(apic: PerProcessorApicInfo, reg: ApicRegisters) u32 {
 // this code is executed on each processor to get information about the local APICs
 fn apicGetInfoForAp(ptr:*c_void) callconv(.C) void {
     const ctx = @ptrCast(*PerProcessorApicInfo, @alignCast(@alignOf(PerProcessorApicInfo), ptr));
-    const apic_base_msr = kernel.readMsr(0x1b);
+    const apic_base_msr = platform.readMsr(0x1b);
     ctx.msr_base = @intCast(u32, apic_base_msr & 0xfffff000);
     ctx.enabled = isLocalApicAvailable();
     ctx.apic_id = (readApicRegister32(ctx.*, ApicRegisters.LOCAL_APIC_ID) >> 24);

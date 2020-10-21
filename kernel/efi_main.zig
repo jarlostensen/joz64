@@ -4,7 +4,7 @@ const systeminfo = @import("systeminfo.zig");
 const kernel = @import("kernel.zig");
 
 const vmx = @import("arch/x86_64/vmx.zig");
-const kernel_x86_64 = @import("arch/x86_64/kernel.zig");
+const platform = @import("arch/x86_64/platform.zig");
 const apic = @import("arch/x86_64/apic.zig");
 
 const mp = @import("multi_processor_protocol.zig");
@@ -119,10 +119,10 @@ fn apIdleFunc(ptr:*c_void) callconv(.C) void {
     const ctx = @ptrCast(*ApIdleContext, @alignCast(8, ptr));
 
     // just idle for a while for now, counting up
-    const start = kernel_x86_64.rdtsc();
+    const start = platform.rdtsc();
     var counter = start;
     while((counter-start) < 10000000) {
-        counter  = kernel_x86_64.rdtsc();
+        counter  = platform.rdtsc();
         ctx.counter += 1;
         asm volatile ("pause");
     }
@@ -191,7 +191,7 @@ pub fn main() void {
     _ = con_out.clearScreen();
     _ = con_out.outputString(L("|--joz64 ------------------------------\n\r\n\r"));
 
-    const earlier = kernel_x86_64.rdtsc();
+    const earlier = platform.rdtsc();
 
     // initialise the memory system and do a little allocation and free test
     kernel.Memory.init();
@@ -204,7 +204,7 @@ pub fn main() void {
     _ = con_out.outputString(L("-----------------------------\n\r"));
     systeminfo.dumpSystemInformation();
 
-    const later = kernel_x86_64.rdtsc();
+    const later = platform.rdtsc();
     var buffer: [256]u8 = undefined;
     var wbuffer: [256]u16 = undefined;
     utils.efiPrint(buffer[0..], wbuffer[0..], "\t\n\rexiting and halting @ {} cycles\n\r", 
