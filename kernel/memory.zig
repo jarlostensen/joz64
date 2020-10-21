@@ -136,16 +136,16 @@ pub const memory_map = &memory_map_state;
 pub fn init() void {
     const L = std.unicode.utf8ToUtf16LeStringLiteral;
     const con_out = uefi.system_table.con_out.?;
-    _ = con_out.outputString(L("SystemAllocator::init\n\r"));
+    //debug output _ = con_out.outputString(L("SystemAllocator::init\n\r"));
 
     memory_map.refresh();
 
     const MemoryType = uefi.tables.MemoryType;
     const memory_desc_entries = memory_map.memory_map_size / memory_map.descriptor_size;
 
-    var buff: [256]u8 = undefined;
-    var wbuff: [256]u16 = undefined;
-    utils.efiPrint(buff[0..], wbuff[0..], "    memory map contains {} entries\n\r", .{memory_desc_entries});
+    //debug output var buff: [256]u8 = undefined;
+    //debug output var wbuff: [256]u16 = undefined;
+    //debug output utils.efiPrint(buff[0..], wbuff[0..], "    memory map contains {} entries\n\r", .{memory_desc_entries});
 
     // loop over the memory map entries and pick out the ones we're good to re-use after we've exited the boot services
     var total_memory : usize = 0;
@@ -179,6 +179,6 @@ pub fn init() void {
     }
 
     total_memory *= std.mem.page_size;
-    utils.efiPrint(buff[0..], wbuff[0..], "    there are {} MBytes available\n\r", .{total_memory/0x100000});
+    //debug output utils.efiPrint(buff[0..], wbuff[0..], "    there are {} MBytes available\n\r", .{total_memory/0x100000});
     memory_system_info.total_available_memory = total_memory;
 }

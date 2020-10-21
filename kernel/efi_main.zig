@@ -95,9 +95,11 @@ fn testDebugFunction() void {
     }
 }
 
-fn testTimeServices() void {
+fn printBanner() void {
     const con_out = uefi.system_table.con_out.?;
-    _ = con_out.outputString(L("\n\rTime services  ======================\n\r"));
+
+    _ = con_out.clearScreen();
+    _ = con_out.outputString(L("|--joz64 ------------------------------\n\r"));
 
     const rt_services = uefi.system_table.runtime_services;
     var time:uefi.Time = undefined;
@@ -105,81 +107,22 @@ fn testTimeServices() void {
     if ( rt_services.getTime(&time, &timeCaps) == uefi.Status.Success ) {
         var buffer: [256]u8 = undefined;
         var wbuffer: [256]u16 = undefined;
-        utils.efiPrint(buffer[0..], wbuffer[0..], "    the time {}:{}:{}, resolution is {}Hz\n\r", 
-                .{time.hour, time.minute, time.second, timeCaps.resolution});
+        utils.efiPrint(buffer[0..], wbuffer[0..], "    the time is {}:{}:{}\n\r", 
+                .{time.hour, time.minute, time.second});
     }
+    _ = con_out.outputString(L("\n\r"));
 }
 
-const ApIdleContext = struct {
-    processorId:u32 = 0,
-    counter:usize = 0,
-};
-
-fn apIdleFunc(ptr:*c_void) callconv(.C) void {
-    const ctx = @ptrCast(*ApIdleContext, @alignCast(8, ptr));
-
-    // just idle for a while for now, counting up
-    const start = platform.rdtsc();
-    var counter = start;
-    while((counter-start) < 10000000) {
-        counter  = platform.rdtsc();
-        ctx.counter += 1;
-        asm volatile ("pause");
-    }
-}
-
-fn testMpProtocol() void {
-    const con_out = uefi.system_table.con_out.?;
-    _ = con_out.outputString(L("\n\rMulti Processor checks  ======================\n\r"));
-
-    const boot_services = uefi.system_table.boot_services.?;
-    var mpprot:*mp.MpProtocol = undefined;
-    const result = boot_services.locateProtocol(&mp.MpProtocol.guid, null, @ptrCast(*?*c_void,&mpprot));
-    if ( result == uefi.Status.Success ) {        
-        var thisProcessorId:usize = undefined;
-        if ( mpprot.WhoAmI(&thisProcessorId) == uefi.Status.Success ) {
-            var numberOfProcessors:usize = undefined;
-            var numberOfEnabledProcessors:usize = undefined;
-            _ = mpprot.GetNumberOfProcessors(&numberOfProcessors, &numberOfEnabledProcessors);
-
-            var buffer: [256]u8 = undefined;
-            var wbuffer: [256]u16 = undefined;
-            utils.efiPrint(buffer[0..], wbuffer[0..], "    there are {} processors, {} are enabled, and this is processor {x}.\n\r", 
-                .{numberOfProcessors, numberOfEnabledProcessors, thisProcessorId});
-            
-            var processor:usize = 0;
-            while( processor < numberOfProcessors ) {
-                var info: mp.ProcessorInformation = undefined;
-                if ( mpprot.GetProcessorInfo(processor, &info) == uefi.Status.Success ) {
-                    utils.efiPrint(buffer[0..], wbuffer[0..], "    processor {}: package {}, core {}, thread {}\n\r", 
-                        .{info.processorId, info.location.package, info.location.core, info.location.thread});
-                }
-                processor += 1;
-            }
-
-            var ctx = ApIdleContext{.counter=0};
-            apIdleFunc(&ctx);
-            utils.efiPrint(buffer[0..], wbuffer[0..], "    idled for a while, counter is now {}\n\r", 
-                .{ctx.processorId});
-        }
-    }
-    else {
-        var buffer: [256]u8 = undefined;
-        var wbuffer: [256]u16 = undefined;
-            utils.efiPrint(buffer[0..], wbuffer[0..], "\tFailed to locate MP protocol: {x}\n\r", 
-            .{result}
-        );        
-    }
-}
-
-fn testApicFunctions() void {
-    const con_out = uefi.system_table.con_out.?;
-    _ = con_out.outputString(L("\n\rAPIC and PIT checks  ======================\n\r"));
+fn initialiseApics() void {
+    
     const boot_services = uefi.system_table.boot_services.?;
     var mpprot:*mp.MpProtocol = undefined;
     const result = boot_services.locateProtocol(&mp.MpProtocol.guid, null, @ptrCast(*?*c_void,&mpprot));
     if ( result == uefi.Status.Success ) {
-        if ( apic.InitializePerCpu(kernel.Memory.system_allocator, mpprot) ) {
+        const con_out = uefi.system_table.con_out.?;
+        _ = con_out.outputString(L("\n\rAPIC and PIT checks  ======================\n\r"));
+
+        if ( apic.initializePerCpu(kernel.Memory.system_allocator, mpprot) ) {
             apic.dumpApicInfo();
         }
     }
@@ -187,23 +130,16 @@ fn testApicFunctions() void {
 
 pub fn main() void {
 
-    const con_out = uefi.system_table.con_out.?;
-    _ = con_out.clearScreen();
-    _ = con_out.outputString(L("|--joz64 ------------------------------\n\r\n\r"));
-
     const earlier = platform.rdtsc();
 
-    // initialise the memory system and do a little allocation and free test
+    printBanner();
+
+    // initialise the memory system and set up our allocator
     kernel.Memory.init();
     
-    testApicFunctions();
-    //testTimeServices();
-    //testHypervisorFunctions();
-    //testDebugFunction();
-
-    _ = con_out.outputString(L("-----------------------------\n\r"));
-    systeminfo.dumpSystemInformation();
-
+    // start setting up APICs for each processor
+    initialiseApics();
+    
     const later = platform.rdtsc();
     var buffer: [256]u8 = undefined;
     var wbuffer: [256]u16 = undefined;

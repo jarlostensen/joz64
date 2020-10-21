@@ -1,4 +1,5 @@
 const std = @import("std");
+const kernel = @import("../../kernel.zig");
 const platform = @import("platform.zig");
 const multiprocessor = @import("../../multi_processor_protocol.zig");
 
@@ -103,12 +104,12 @@ var apic_system_info:ApicSystemInfo = ApicSystemInfo{
     .bsp = 0,
 };
 
-pub fn InitializePerCpu(allocator:*Allocator, mpprot:*multiprocessor.MpProtocol) bool {
+pub fn initializePerCpu(allocator:*Allocator, mpprot:*multiprocessor.MpProtocol) bool {
 
     var numberOfProcessors:usize = undefined;
     var numberOfEnabledProcessors:usize = undefined;
     _ = mpprot.GetNumberOfProcessors(&numberOfProcessors, &numberOfEnabledProcessors);
-    
+
     per_processor_apic_info = allocator.alloc(PerProcessorApicInfo, numberOfProcessors) catch unreachable;
 
     var bsp:usize = 0;
@@ -123,10 +124,8 @@ pub fn InitializePerCpu(allocator:*Allocator, mpprot:*multiprocessor.MpProtocol)
         per_processor_apic_info[p].is_bsp = false;
         if( p!= bsp ) {
             const kTimeoutMs:usize = 5;
-            if (mpprot.StartupThisAp(apicGetInfoForAp, p, null, kTimeoutMs, @ptrCast(*c_void, &per_processor_apic_info[p]), null) != uefi.Status.Success ) {
-                //TODO: better error handling, or outright panic, requried...
-                per_processor_apic_info[p].enabled = false;
-            }
+            //NOTE: VirtualBox: this seems to return an error even if it runs...?
+            _ = mpprot.StartupThisAp(apicGetInfoForAp, p, null, kTimeoutMs, @ptrCast(*c_void, &per_processor_apic_info[p]), null);
         } else {
             per_processor_apic_info[p].is_bsp = true;
             apicGetInfoForAp(@ptrCast(*c_void, &per_processor_apic_info[p]));
