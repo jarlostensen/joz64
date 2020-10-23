@@ -64,12 +64,13 @@ pitWaitOneShot:
     pushq   %rdx
     pushq   %rcx
 
-    mov     $0x43, %dx
-    mov     $0x41, %al
+    // initialise one-shot mode
+    mov     $0x43, %dx      // PIT_COMMAND    
+    mov     $0x41, %al      // PIT_COUNTER_2 | PIT_MODE_ONESHOT
     outb    %al, %dx
 
-    // set the timer to be the max interval, i.e. 18.2 Hz
-    mov     $0x42, %dx
+    // set the timer to be the max interval, i.e. 18.2 Hz = 55ms period
+    mov     $0x42, %dx      // PIT_COMMAND_2
     mov     $0xff, %al
     outb    %al, %dx
     outb    %al, %dx
@@ -83,14 +84,16 @@ pitWaitOneShot:
 
     // read and test for signal raised
     mov     $0x42, %dx
+    // dummy reads to give the chip time to respond    
     inb     %dx, %al
     inb     %dx, %al
     xor     %rax, %rax
     // wait for signal
 .pitwos1:
     inb     %dx, %al
-    inb     %dx, %al 
-    pause   
+    nop
+    inb     %dx, %al
+    pause
     test    %rax,%rax
     jnz .pitwos1
 

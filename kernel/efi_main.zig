@@ -3,12 +3,14 @@ const utils = @import("utils.zig");
 const systeminfo = @import("systeminfo.zig");
 const kernel = @import("kernel.zig");
 
-const vmx = @import("arch/x86_64/vmx.zig");
-const platform = @import("arch/x86_64/platform.zig");
-const apic = @import("arch/x86_64/apic.zig");
+const vmx = @import("vmx.zig");
+const platform = @import("platform.zig");
+const apic = @import("apic.zig");
+const video = @import("video.zig");
 
 const mp = @import("multi_processor_protocol.zig");
 const uefi_debug = @import("debug_protocol.zig");
+const timestamp = @import("timestamp_protocol.zig");
 
 const uefi = std.os.uefi;
 const L = std.unicode.utf8ToUtf16LeStringLiteral;
@@ -123,8 +125,95 @@ fn initialiseApics() void {
         _ = con_out.outputString(L("\n\rAPIC and PIT checks  ======================\n\r"));
 
         if ( apic.initializePerCpu(kernel.Memory.system_allocator, mpprot) ) {
-            apic.dumpApicInfo();
+            apic.dumpInfo();
+
+            //_ = con_out.outputString(L("start 55ms PIT wait..."));
+            // platform.pitWaitOneShot();
+            //_ = con_out.outputString(L("done\n\r"));
         }
+    }
+}
+
+fn timestampInfo() void {
+    const boot_services = uefi.system_table.boot_services.?;
+    var timestamp_prot:*timestamp.TimestampProtocol = undefined;
+    const result = boot_services.locateProtocol(&timestamp.TimestampProtocol.guid, null, @ptrCast(*?*c_void, &timestamp_prot));
+    if ( result == uefi.Status.Success ) {
+        const con_out = uefi.system_table.con_out.?;
+        _ = con_out.outputString(L("\n\rTimestamp info  ======================\n\r"));
+
+        const now = timestamp_prot.GetTimestamp();
+        var props:timestamp.TimestampProperties = undefined;
+        _ = timestamp_prot.GetProperties(&props);
+        
+        var buffer: [256]u8 = undefined;
+        var wbuffer: [256]u16 = undefined;
+        utils.efiPrint(buffer[0..], wbuffer[0..], "    Timestamp value {}, frequency {}\n\r", 
+                .{now, props.freq});
+    }
+}
+
+var framebuffer_base:[*]u8 = undefined;
+var framebuffer_size:usize = 0;
+
+fn graphicsOutputProtocol() void {
+    const boot_services = uefi.system_table.boot_services.?;
+    
+    
+    var handles:[4]uefi.Handle = undefined;
+    var handles_size:usize = 4*@sizeOf(uefi.Handle);
+    if ( boot_services.locateHandle(std.os.uefi.tables.LocateSearchType.ByProtocol, 
+                    &uefi.protocols.GraphicsOutputProtocol.guid, 
+                    null,
+                    &handles_size, 
+                    &handles) == uefi.Status.Success ) {
+        var num_handles = handles_size/@sizeOf(uefi.Handle);
+
+        var buffer: [256]u8 = undefined;
+        var wbuffer: [256]u16 = undefined;
+
+        var gop:*uefi.protocols.GraphicsOutputProtocol = undefined;
+        if ( boot_services.handleProtocol(handles[0], &uefi.protocols.GraphicsOutputProtocol.guid, @ptrCast(*?*c_void, &gop)) == uefi.Status.Success ) {
+            
+            var mode_num:u32 = 0;
+            var size_of_info:usize = 0;
+            var info:*uefi.protocols.GraphicsOutputModeInformation = undefined;
+            var status = gop.queryMode(mode_num, &size_of_info, &info);
+            while(status == uefi.Status.Success) {
+                switch(info.pixel_format) {
+                    uefi.protocols.GraphicsPixelFormat.PixelRedGreenBlueReserved8BitPerColor,
+                    uefi.protocols.GraphicsPixelFormat.PixelBlueGreenRedReserved8BitPerColor => {
+
+                        if ( info.horizontal_resolution == 800 and info.vertical_resolution == 600 ) {
+                            framebuffer_base = @intToPtr([*]u8, gop.mode.frame_buffer_base);
+                            framebuffer_size = gop.mode.frame_buffer_size;
+                            break;
+                        }
+                    },
+                    else => {},
+                }
+                
+                mode_num += 1;
+                status = gop.queryMode(mode_num, &size_of_info, &info);
+            }
+        }
+    }
+}
+
+fn drawFilledSquare(left:usize, top:usize, right:usize, bottom:usize, colour:u32) void {
+
+    var wptr:[*]u32 = @ptrCast([*]u32, @alignCast(@alignOf([*]u32), framebuffer_base));
+    wptr += top*800 + left;
+    var cols = bottom - top;
+    var rows = right - left;
+    while(cols>0) {
+        var row:usize = 0;
+        while(row < rows) {
+            wptr[row] = colour;
+            row += 1;
+        }
+        wptr += 800;
+        cols -= 1;
     }
 }
 
@@ -138,7 +227,15 @@ pub fn main() void {
     kernel.Memory.init();
     
     // start setting up APICs for each processor
-    initialiseApics();
+    //initialiseApics();
+
+    // gather information about memory, graphics modes, number of processors....
+
+    graphicsOutputProtocol();
+
+    const font = video.getFont8x8();
+    
+    //timestampInfo();
     
     const later = platform.rdtsc();
     var buffer: [256]u8 = undefined;
@@ -149,9 +246,9 @@ pub fn main() void {
     
     kernel.Memory.memory_map.refresh();
     const boot_services = uefi.system_table.boot_services.?;
+    _ = boot_services.exitBootServices(uefi.handle, kernel.Memory.memory_map.memory_map_key);
 
-    //zzz: leaving this in makes qemu exit right away, for some reason...perhaps it's a...crash?
-    //_ = boot_services.exitBootServices(uefi.handle, kernel.Memory.memory_map.memory_map_key);
+    drawFilledSquare(10, 10, 20, 20, 0xff00ff00);
 
     kernel.halt();
 }

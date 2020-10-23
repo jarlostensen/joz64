@@ -14,6 +14,7 @@ const APIC_BASE_MSR = 0x1b;
 //NOTE: these registers are relative to the APIC base address (normally 0xfee00000 )
 const ApicRegisters = enum(u32) {
     LOCAL_APIC_ID       = 0x20,
+    LOCAL_APIC_VERSION  = 0x30,
 
     INITIAL_TIMER_COUNT = 0x380,
     CURRENT_TIMER_COUNT = 0x390,
@@ -29,6 +30,9 @@ const PerProcessorApicInfo = struct {
     apic_id:u32,
     enabled:bool,
     msr_base:u32,
+    version:u8,
+    tsc_core_clock_ratio:u64,
+    core_clock_freq:u32,
     is_bsp:bool,
 };
 
@@ -91,15 +95,34 @@ fn readApicRegister32(apic: PerProcessorApicInfo, reg: ApicRegisters) u32 {
 }
 
 // this code is executed on each processor to get information about the local APICs
+// Intel IA Dev Manual volume 3A, 10
 fn apicGetInfoForAp(ptr:*c_void) callconv(.C) void {
+    
     const ctx = @ptrCast(*PerProcessorApicInfo, @alignCast(@alignOf(PerProcessorApicInfo), ptr));
-    const apic_base_msr = platform.readMsr(0x1b);
+    const apic_base_msr = platform.readMsr(APIC_BASE_MSR);
     ctx.msr_base = @intCast(u32, apic_base_msr & 0xfffff000);
     ctx.enabled = isLocalApicAvailable();
     ctx.apic_id = (readApicRegister32(ctx.*, ApicRegisters.LOCAL_APIC_ID) >> 24);
+    ctx.version = @intCast(u8, (readApicRegister32(ctx.*, ApicRegisters.LOCAL_APIC_VERSION) & 0xff));
+    
+    var ratio_den:u32 = 0;
+    var ratio_num:u32 = 0;
+    var clock_freq:u32 = 0;
+    asm volatile(
+        \\mov $0x15, %%rax
+        \\cpuid
+        \\mov %%eax, %[ratio_den]
+        \\mov %%ebx, %[ratio_num]
+        \\mov %%ecx, %[clock_freq]
+        : [ratio_den] "=m" (ratio_den), [ratio_num] "=m" (ratio_num), [clock_freq] "=m" (clock_freq)
+    );
+    //NOTE: these may be 0 if they're not enumerated so we can't rely on them
+    ctx.tsc_core_clock_ratio = (@intCast(u64, ratio_num) << 32) | @intCast(u32, ratio_den);
+    ctx.core_clock_freq = clock_freq;
+
 }
 
-var apic_system_info:ApicSystemInfo = ApicSystemInfo{
+var apic_system_info = ApicSystemInfo{
     .initialized = false,
     .bsp = 0,
 };
@@ -136,15 +159,15 @@ pub fn initializePerCpu(allocator:*Allocator, mpprot:*multiprocessor.MpProtocol)
     return true;
 }
 
-pub fn dumpApicInfo() void {
+pub fn dumpInfo() void {
     for(per_processor_apic_info) | info | {
 
         var buffer: [256]u8 = undefined;
         var wbuffer: [256]u16 = undefined;
 
         if ( info.enabled ) {
-            utils.efiPrint(buffer[0..], wbuffer[0..], "processor {}, APIC id 0x{x}, MSR base 0x{x}\n\r", 
-                    .{info.processor_id, info.apic_id, info.msr_base});
+            utils.efiPrint(buffer[0..], wbuffer[0..], "processor {}, APIC id 0x{x}, version 0x{x}, clock {}Hz\n\r", 
+                    .{info.processor_id, info.apic_id, info.version, info.core_clock_freq});
         }
         else {
             utils.efiPrint(buffer[0..], wbuffer[0..], "processor {}, no APIC enabled\n\r", 

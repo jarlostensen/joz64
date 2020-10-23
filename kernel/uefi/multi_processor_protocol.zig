@@ -1,7 +1,6 @@
 const std = @import("std");
 const uefi = std.os.uefi;
 const Status = uefi.Status;
-const L = std.unicode.utf8ToUtf16LeStringLiteral;
 
 pub const CpuPhysicalLocation = extern struct {
     package: u32,

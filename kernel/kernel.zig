@@ -1,6 +1,6 @@
 const std = @import("std");
 pub const Memory = @import("memory.zig");
-pub const platform = @import("arch/x86_64/platform.zig");
+pub const platform = @import("platform.zig");
 
 const uefi = std.os.uefi;
 const L = std.unicode.utf8ToUtf16LeStringLiteral;
