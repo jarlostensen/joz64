@@ -7,6 +7,7 @@ const vmx = @import("vmx.zig");
 const platform = @import("platform.zig");
 const apic = @import("apic.zig");
 const video = @import("video.zig");
+const font8x8 = @import("font8x8.zig");
 
 const mp = @import("multi_processor_protocol.zig");
 const uefi_debug = @import("debug_protocol.zig");
@@ -200,24 +201,11 @@ fn graphicsOutputProtocol() void {
     }
 }
 
-fn drawFilledSquare(left:usize, top:usize, right:usize, bottom:usize, colour:u32) void {
-
-    var wptr:[*]u32 = @ptrCast([*]u32, @alignCast(@alignOf([*]u32), framebuffer_base));
-    wptr += top*800 + left;
-    var cols = bottom - top;
-    var rows = right - left;
-    while(cols>0) {
-        var row:usize = 0;
-        while(row < rows) {
-            wptr[row] = colour;
-            row += 1;
-        }
-        wptr += 800;
-        cols -= 1;
-    }
-}
-
 pub fn main() void {
+
+    const con_out = uefi.system_table.con_out.?;
+    var buffer: [256]u8 = undefined;
+    var wbuffer: [256]u16 = undefined;
 
     const earlier = platform.rdtsc();
 
@@ -230,25 +218,26 @@ pub fn main() void {
     //initialiseApics();
 
     // gather information about memory, graphics modes, number of processors....
+    if ( video.initialiseVideo()) {
+        //video.drawFilledSquare(10, 10, 40, 40, 0xff00ff);
+        video.dumpFont(font8x8.font8x8_basic, 10, 10, 0xffffffff);
+    } 
+    else |err| switch(err) {
+        video.VideoError.GraphicsProtocolError => {
+            _ = con_out.outputString(L("Graphics protocol error\n\r"));
+        },
+        video.VideoError.NoSuitableModeFound => {
+            _ = con_out.outputString(L("No suitable mode found\n\r"));
+        },
+    }
 
-    graphicsOutputProtocol();
-
-    const font = video.getFont8x8();
-    
-    //timestampInfo();
-    
-    const later = platform.rdtsc();
-    var buffer: [256]u8 = undefined;
-    var wbuffer: [256]u16 = undefined;
-    utils.efiPrint(buffer[0..], wbuffer[0..], "\t\n\rexiting and halting @ {} cycles\n\r", 
+    const later = platform.rdtsc();    
+    utils.efiPrint(buffer[0..], wbuffer[0..], "\t\n\rexiting and halting {} cycles later\n\r", 
         .{later - earlier}
     );
     
     kernel.Memory.memory_map.refresh();
     const boot_services = uefi.system_table.boot_services.?;
     _ = boot_services.exitBootServices(uefi.handle, kernel.Memory.memory_map.memory_map_key);
-
-    drawFilledSquare(10, 10, 20, 20, 0xff00ff00);
-
     kernel.halt();
 }
