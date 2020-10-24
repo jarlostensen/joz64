@@ -219,8 +219,8 @@ pub fn main() void {
 
     // gather information about memory, graphics modes, number of processors....
     if ( video.initialiseVideo()) {
-        //video.drawFilledSquare(10, 10, 40, 40, 0xff00ff);
-        video.dumpFont(font8x8.font8x8_basic, 10, 10, 0xffffffff);
+        video.dumpFont(font8x8.font8x8_basic, 10, 200, video.kGreen);
+        video.drawText(10, 10, video.kYellow, font8x8.font8x8_basic, "Hello GOP World");
     } 
     else |err| switch(err) {
         video.VideoError.GraphicsProtocolError => {
@@ -228,6 +228,9 @@ pub fn main() void {
         },
         video.VideoError.NoSuitableModeFound => {
             _ = con_out.outputString(L("No suitable mode found\n\r"));
+        },
+        video.VideoError.SetModeFailed => {
+            _ = con_out.outputString(L("Set mode failed\n\r"));
         },
     }
 
@@ -239,5 +242,7 @@ pub fn main() void {
     kernel.Memory.memory_map.refresh();
     const boot_services = uefi.system_table.boot_services.?;
     _ = boot_services.exitBootServices(uefi.handle, kernel.Memory.memory_map.memory_map_key);
+
+    video.drawText(10, 500, video.kRed, font8x8.font8x8_basic, "...kernel halting");
     kernel.halt();
 }
