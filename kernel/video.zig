@@ -45,8 +45,8 @@ pub fn initialiseVideo() VideoError!bool {
     const boot_services = uefi.system_table.boot_services.?;    
 
     // debug
-    //var buffer: [256]u8 = undefined;
-    //var wbuffer: [256]u16 = undefined;
+    var buffer: [256]u8 = undefined;
+    var wbuffer: [256]u16 = undefined;
     
     var handles:[4]uefi.Handle = undefined;
     var handles_size:usize = 4*@sizeOf(uefi.Handle);
@@ -60,9 +60,7 @@ pub fn initialiseVideo() VideoError!bool {
         var gop:*uefi.protocols.GraphicsOutputProtocol = undefined;
         if ( boot_services.handleProtocol(handles[0], &uefi.protocols.GraphicsOutputProtocol.guid, @ptrCast(*?*c_void, &gop)) == uefi.Status.Success ) {
             
-            const kDesiredHorizontalResolution:u32 = 800;
-            const kDesiredVerticalResolution:u32 = 600;
-            
+            var max_horiz_res:u32 = 0;
             var mode_num:i32 = 0;
             var found_mode:i32 = -1;
 
@@ -71,49 +69,36 @@ pub fn initialiseVideo() VideoError!bool {
             var status = gop.queryMode(@intCast(u32, mode_num), &size_of_info, &info);
             while(status == uefi.Status.Success) {
 
-                
-                found_mode = switch(info.pixel_format) {
+                switch(info.pixel_format) {
                     uefi.protocols.GraphicsPixelFormat.PixelRedGreenBlueReserved8BitPerColor,
-                    uefi.protocols.GraphicsPixelFormat.PixelBlueGreenRedReserved8BitPerColor => pixFormatBlk: {
-
-                        if ( info.horizontal_resolution == kDesiredHorizontalResolution 
-                                and 
-                            info.vertical_resolution == kDesiredVerticalResolution ) {
-
-                                // utils.efiPrint(buffer[0..], wbuffer[0..], "    found mode {} {}x{}, stride is {}, format {}\n\r", 
-                                //   .{mode_num, info.horizontal_resolution, info.vertical_resolution, info.pixels_per_scan_line, info.pixel_format}
-                                // );
-
-                                break :pixFormatBlk mode_num;
+                    uefi.protocols.GraphicsPixelFormat.PixelBlueGreenRedReserved8BitPerColor => {
+                        
+                        // pick highest res mode
+                        if ( info.horizontal_resolution > max_horiz_res ) {
+                            max_horiz_res = info.horizontal_resolution;
+                            active_mode_info.pixel_stride = info.pixels_per_scan_line;
+                            active_mode_info.framebuffer_stride = info.pixels_per_scan_line << 2;
+                            active_mode_info.horiz_res = info.horizontal_resolution;
+                            active_mode_info.vert_res = info.vertical_resolution;
+                            found_mode = mode_num;
                         }
-                        break :pixFormatBlk -1;
                     },
-                    else => -1,
-                };
-                
-                if ( found_mode>=0 )
-                {
-
-                    active_mode_info.framebuffer_base = @intToPtr([*]u8, gop.mode.frame_buffer_base);
-                    active_mode_info.framebuffer_size = gop.mode.frame_buffer_size;
-                    active_mode_info.pixel_stride = info.pixels_per_scan_line;
-                    active_mode_info.framebuffer_stride = info.pixels_per_scan_line << 2;
-                    active_mode_info.mode = @intCast(u32, found_mode);
-                    active_mode_info.horiz_res = kDesiredHorizontalResolution;
-                    active_mode_info.vert_res = kDesiredVerticalResolution;
-
-                    // utils.efiPrint(buffer[0..], wbuffer[0..], "    found a matching mode {}, stride is {}\n\r", 
-                    //               .{found_mode, active_mode_info.pixel_stride}
-                    //             );
-                    break;
+                    else => {},
                 }
 
                 mode_num += 1;
                 status = gop.queryMode(@intCast(u32, mode_num), &size_of_info, &info);
             }
 
-            if (found_mode<0 ) 
+            if ( found_mode>=0 )
             {
+                active_mode_info.framebuffer_base = @intToPtr([*]u8, gop.mode.frame_buffer_base);
+                active_mode_info.framebuffer_size = gop.mode.frame_buffer_size;
+                utils.efiPrint(buffer[0..], wbuffer[0..], "    found a matching mode {}, {}x{} stride is {}\n\r", 
+                                .{found_mode, active_mode_info.horiz_res, active_mode_info.pixel_stride, active_mode_info.pixel_stride}
+                            );
+            }
+            else {
                 return VideoError.NoSuitableModeFound;
             }
 
@@ -123,7 +108,7 @@ pub fn initialiseVideo() VideoError!bool {
             //       This requires the VBoxSVGA graphics controller to be selected for the virtual machine. 
 
             if ( gop.setMode(@intCast(u32, found_mode)) != uefi.Status.Success ) {
-                return VideoError.SetModeFailed;
+                 return VideoError.SetModeFailed;
             }
         }
         else {
