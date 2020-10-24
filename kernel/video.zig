@@ -1,11 +1,12 @@
 const std = @import("std");
 const kernel = @import("kernel.zig");
 const font8x8 = @import("font8x8.zig");
-
 const uefi = std.os.uefi;
 
 //debug
+const utils = @import("utils.zig");
 const L = std.unicode.utf8ToUtf16LeStringLiteral;
+
 
 //ZZZ: depends on pixel format being RGB, we should have one per version
 pub const kRed   = 0xff0000;
@@ -42,6 +43,10 @@ var active_mode_info = ActiveModeInfo{
 
 pub fn initialiseVideo() VideoError!bool {
     const boot_services = uefi.system_table.boot_services.?;    
+
+    // debug
+    //var buffer: [256]u8 = undefined;
+    //var wbuffer: [256]u16 = undefined;
     
     var handles:[4]uefi.Handle = undefined;
     var handles_size:usize = 4*@sizeOf(uefi.Handle);
@@ -74,6 +79,11 @@ pub fn initialiseVideo() VideoError!bool {
                         if ( info.horizontal_resolution == kDesiredHorizontalResolution 
                                 and 
                             info.vertical_resolution == kDesiredVerticalResolution ) {
+
+                                // utils.efiPrint(buffer[0..], wbuffer[0..], "    found mode {} {}x{}, stride is {}, format {}\n\r", 
+                                //   .{mode_num, info.horizontal_resolution, info.vertical_resolution, info.pixels_per_scan_line, info.pixel_format}
+                                // );
+
                                 break :pixFormatBlk mode_num;
                         }
                         break :pixFormatBlk -1;
@@ -83,13 +93,18 @@ pub fn initialiseVideo() VideoError!bool {
                 
                 if ( found_mode>=0 )
                 {
+
                     active_mode_info.framebuffer_base = @intToPtr([*]u8, gop.mode.frame_buffer_base);
                     active_mode_info.framebuffer_size = gop.mode.frame_buffer_size;
-                    active_mode_info.pixel_stride = gop.mode.info.pixels_per_scan_line;
-                    active_mode_info.framebuffer_stride = gop.mode.info.pixels_per_scan_line << 2;
+                    active_mode_info.pixel_stride = info.pixels_per_scan_line;
+                    active_mode_info.framebuffer_stride = info.pixels_per_scan_line << 2;
                     active_mode_info.mode = @intCast(u32, found_mode);
                     active_mode_info.horiz_res = kDesiredHorizontalResolution;
                     active_mode_info.vert_res = kDesiredVerticalResolution;
+
+                    // utils.efiPrint(buffer[0..], wbuffer[0..], "    found a matching mode {}, stride is {}\n\r", 
+                    //               .{found_mode, active_mode_info.pixel_stride}
+                    //             );
                     break;
                 }
 
@@ -120,6 +135,18 @@ pub fn initialiseVideo() VideoError!bool {
     }
 
     return true;
+}
+
+pub fn getActiveModeHorizontalRes() usize {
+    return active_mode_info.horiz_res;
+}
+
+pub fn getActiveModeVerticalRes() usize {
+    return active_mode_info.vert_res;
+}
+
+pub fn getActiveModePixelStride() usize {
+    return @intCast(usize, active_mode_info.pixel_stride);
 }
 
 fn frameBufferPtr(left:usize, top:usize) [*]u32 {

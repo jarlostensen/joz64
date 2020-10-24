@@ -219,8 +219,14 @@ pub fn main() void {
 
     // gather information about memory, graphics modes, number of processors....
     if ( video.initialiseVideo()) {
-        video.dumpFont(font8x8.font8x8_basic, 10, 200, video.kGreen);
-        video.drawText(10, 10, video.kYellow, font8x8.font8x8_basic, "Hello GOP World");
+        
+        utils.efiPrint(buffer[0..], wbuffer[0..], "selected video mode is {}x{}, stride is {} pixels\n\r", 
+                    .{video.getActiveModeHorizontalRes(), video.getActiveModeVerticalRes(), video.getActiveModePixelStride()}
+                );
+
+        video.drawFilledSquare(700, 10, 720, 20, video.kGreen);
+        //video.dumpFont(font8x8.font8x8_basic, 10, 200, video.kGreen);
+        video.drawText(200, 10, video.kYellow, font8x8.font8x8_basic, "Hello GOP World");
     } 
     else |err| switch(err) {
         video.VideoError.GraphicsProtocolError => {
