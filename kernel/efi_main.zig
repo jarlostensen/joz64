@@ -7,6 +7,7 @@ const vmx = @import("vmx.zig");
 const platform = @import("platform.zig");
 const apic = @import("apic.zig");
 const video = @import("video.zig");
+const console = @import("console.zig");
 const font8x8 = @import("font8x8.zig");
 
 const mp = @import("multi_processor_protocol.zig");
@@ -220,13 +221,15 @@ pub fn main() void {
     // gather information about memory, graphics modes, number of processors....
     if ( video.initialiseVideo()) {
         
+        console.selectFont(&font8x8.font8x8_basic);
+        console.setTextColour(video.kBlue);
+
         utils.efiPrint(buffer[0..], wbuffer[0..], "selected video mode is {}x{}, stride is {} pixels\n\r", 
                     .{video.getActiveModeHorizontalRes(), video.getActiveModeVerticalRes(), video.getActiveModePixelStride()}
                 );
 
-        video.drawFilledSquare(700, 10, 720, 20, video.kGreen);
-        //video.dumpFont(font8x8.font8x8_basic, 10, 200, video.kGreen);
-        video.drawText(200, 10, video.kYellow, font8x8.font8x8_basic, "Hello GOP World");
+        console.outputString("\n|-joZ64 --------------------------------------------------\n");
+        console.outputString("|---------------------------------------------------------\n");
     } 
     else |err| switch(err) {
         video.VideoError.GraphicsProtocolError => {
@@ -241,9 +244,9 @@ pub fn main() void {
     }
 
     const later = platform.rdtsc();    
-    utils.efiPrint(buffer[0..], wbuffer[0..], "\t\n\rexiting and halting {} cycles later\n\r", 
-        .{later - earlier}
-    );
+    // utils.efiPrint(buffer[0..], wbuffer[0..], "\t\n\rexiting and halting {} cycles later\n\r", 
+    //     .{later - earlier}
+    // );
     
     kernel.Memory.memory_map.refresh();
     const boot_services = uefi.system_table.boot_services.?;

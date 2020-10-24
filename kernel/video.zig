@@ -1,6 +1,5 @@
 const std = @import("std");
 const kernel = @import("kernel.zig");
-const font8x8 = @import("font8x8.zig");
 const uefi = std.os.uefi;
 
 //debug
@@ -9,9 +8,10 @@ const L = std.unicode.utf8ToUtf16LeStringLiteral;
 
 
 //ZZZ: depends on pixel format being RGB, we should have one per version
+pub const kWhite = 0xffffff;
 pub const kRed   = 0xff0000;
 pub const kGreen = 0x00ff00;
-pub const kBlue  = 0x00ff00;
+pub const kBlue  = 0x0000ff;
 pub const kYellow = 0xffff00;
 
 pub const VideoError = error {
@@ -155,11 +155,15 @@ fn frameBufferPtr(left:usize, top:usize) [*]u32 {
     return wptr;
 }
 
-pub fn drawText(left:usize, top:usize, colour:u32, font:[128][8]u8, comptime text: []const u8) void {
+// draw sub segment of text at position left,top using font and colour
+pub fn drawTextSegment(left:usize, top:usize, colour:u32, font:[128][8]u8, comptime text: []const u8, offs:usize, len:usize) void {
     var wptr = frameBufferPtr(left, top);
     
-    for(text) |c| {
+    var n = offs;
+    const end = offs+len;
+    while(n < end) {
 
+        const c = text[n];
         var line:usize = 0;
         var line_ptr = wptr;
         while(line < 8) {
@@ -176,7 +180,13 @@ pub fn drawText(left:usize, top:usize, colour:u32, font:[128][8]u8, comptime tex
         }
         //NOTE: based on font being 8x8x
         wptr += 8;
+        n += 1;
     }
+}
+
+// draw text at position left,top using font and colour
+pub fn drawText(left:usize, top:usize, colour:u32, font:[128][8]u8, comptime text: []const u8) void {
+    drawTextSegment(left, top, colour, font, text, 0, text.len);
 }
 
 pub fn drawFilledSquare(left:usize, top:usize, right:usize, bottom:usize, colour:u32) void {
