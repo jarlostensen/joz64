@@ -2,6 +2,8 @@ const std = @import("std");
 const kernel = @import("kernel.zig");
 const uefi = std.os.uefi;
 
+const assert = std.debug.assert;
+
 //debug
 const utils = @import("utils.zig");
 const L = std.unicode.utf8ToUtf16LeStringLiteral;
@@ -13,11 +15,27 @@ pub const kRed   = 0xff0000;
 pub const kGreen = 0x00ff00;
 pub const kBlue  = 0x0000ff;
 pub const kYellow = 0xffff00;
+pub const kCornflowerBlue = 0x6495ed;
 
 pub const VideoError = error {
     GraphicsProtocolError,
     NoSuitableModeFound,
     SetModeFailed,
+};
+
+pub const Rectangle = struct {
+    top:usize,
+    left:usize,
+    bottom:usize,
+    right:usize,
+
+    pub fn Width(self:*const Rectangle) usize {
+        return self.right - self.left;
+    }
+
+    pub fn Height(self:*const Rectangle) usize {
+        return self.bottom - self.top;
+    }
 };
 
 const ActiveModeInfo = struct {
@@ -41,12 +59,16 @@ var active_mode_info = ActiveModeInfo{
     .pixel_stride = 0,
 };
 
-pub fn initialiseVideo() VideoError!bool {
-    const boot_services = uefi.system_table.boot_services.?;    
+var video_initialised = false;
 
-    // debug
-    var buffer: [256]u8 = undefined;
-    var wbuffer: [256]u16 = undefined;
+pub fn initialiseVideo() VideoError!bool {
+
+    assert(video_initialised==false);
+
+    const boot_services = uefi.system_table.boot_services.?;
+
+    // debugvar buffer: [256]u8 = undefined;
+    // debugvar wbuffer: [256]u16 = undefined;
     
     var handles:[4]uefi.Handle = undefined;
     var handles_size:usize = 4*@sizeOf(uefi.Handle);
@@ -94,9 +116,9 @@ pub fn initialiseVideo() VideoError!bool {
             {
                 active_mode_info.framebuffer_base = @intToPtr([*]u8, gop.mode.frame_buffer_base);
                 active_mode_info.framebuffer_size = gop.mode.frame_buffer_size;
-                utils.efiPrint(buffer[0..], wbuffer[0..], "    found a matching mode {}, {}x{} stride is {}\n\r", 
-                                .{found_mode, active_mode_info.horiz_res, active_mode_info.pixel_stride, active_mode_info.pixel_stride}
-                            );
+                // debugutils.efiPrint(buffer[0..], wbuffer[0..], "    found a matching mode {}, {}x{} stride is {}\n\r", 
+                // debug.{found_mode, active_mode_info.horiz_res, active_mode_info.pixel_stride, active_mode_info.pixel_stride}
+                // debug);
             }
             else {
                 return VideoError.NoSuitableModeFound;
@@ -119,19 +141,28 @@ pub fn initialiseVideo() VideoError!bool {
         return VideoError.GraphicsProtocolError;
     }
 
+    video_initialised = true;
     return true;
 }
 
 pub fn getActiveModeHorizontalRes() usize {
+    assert(video_initialised==true);
     return active_mode_info.horiz_res;
 }
 
 pub fn getActiveModeVerticalRes() usize {
+    assert(video_initialised==true);
     return active_mode_info.vert_res;
 }
 
 pub fn getActiveModePixelStride() usize {
+    assert(video_initialised==true);
     return @intCast(usize, active_mode_info.pixel_stride);
+}
+
+pub fn getActiveModeFramebufferSize() usize {
+    assert(video_initialised==true);
+    return @intCast(usize, active_mode_info.framebuffer_size);
 }
 
 fn frameBufferPtr(left:usize, top:usize) [*]u32 {
@@ -141,8 +172,17 @@ fn frameBufferPtr(left:usize, top:usize) [*]u32 {
 }
 
 // draw sub segment of text at position left,top using font and colour
-pub fn drawTextSegment(left:usize, top:usize, colour:u32, font:[128][8]u8, comptime text: []const u8, offs:usize, len:usize) void {
+pub fn drawTextSegment(left:usize, top:usize, colour:u32, bg_colour:u32, font:[128][8]u8, comptime text: []const u8, offs:usize, len:usize) void {
+    if(len==0)
+        return;
+
+    assert(video_initialised==true);
+    assert(offs+len <= text.len);
+    
     var wptr = frameBufferPtr(left, top);
+
+    // pixel set, or not set
+    const colour_lut = [2]u32{bg_colour, colour};
     
     var n = offs;
     const end = offs+len;
@@ -152,14 +192,32 @@ pub fn drawTextSegment(left:usize, top:usize, colour:u32, font:[128][8]u8, compt
         var line:usize = 0;
         var line_ptr = wptr;
         while(line < 8) {
+
             var pixels:u8 = font[c][line];
-            var index:u8 = 0;
-            while(index<8) {
-                const set = pixels & 1;
-                line_ptr[index] = set*colour;
-                pixels >>= 1;
-                index += 1;
+            switch(pixels) {
+                0 => {
+                    line_ptr[0] = bg_colour; line_ptr[1] = bg_colour;
+                    line_ptr[2] = bg_colour; line_ptr[3] = bg_colour;
+                    line_ptr[4] = bg_colour; line_ptr[5] = bg_colour;
+                    line_ptr[6] = bg_colour; line_ptr[7] = bg_colour;
+                },
+                0xff => {
+                    line_ptr[0] = colour; line_ptr[1] = colour;
+                    line_ptr[2] = colour; line_ptr[3] = colour;
+                    line_ptr[4] = colour; line_ptr[5] = colour;
+                    line_ptr[6] = colour; line_ptr[7] = colour;
+                },
+                else => {
+                    var index:u8 = 0;
+                    while(index<8) {
+                        const set = pixels & 1;
+                        line_ptr[index] = colour_lut[set];
+                        pixels >>= 1;
+                        index += 1;
+                    }
+                }
             }
+            
             line+=1;
             line_ptr += active_mode_info.pixel_stride;
         }
@@ -170,8 +228,10 @@ pub fn drawTextSegment(left:usize, top:usize, colour:u32, font:[128][8]u8, compt
 }
 
 // draw text at position left,top using font and colour
-pub fn drawText(left:usize, top:usize, colour:u32, font:[128][8]u8, comptime text: []const u8) void {
-    drawTextSegment(left, top, colour, font, text, 0, text.len);
+pub fn drawText(left:usize, top:usize, colour:u32, bg_colour:u32, font:[128][8]u8, comptime text: []const u8) void {
+    if(text.len==0)
+        return;
+    drawTextSegment(left, top, colour, bg_colour, font, text, 0, text.len);
 }
 
 pub fn drawFilledSquare(left:usize, top:usize, right:usize, bottom:usize, colour:u32) void {
@@ -218,5 +278,58 @@ pub fn dumpFont(font:[128][8]u8, top:usize, left:usize, colour:u32) void {
             topptr += (active_mode_info.pixel_stride * 8);
             wptr = topptr;
         }
+    }
+}
+
+fn scrollUpRegionFullWidth(top:usize, bottom:usize, linesToScroll:usize) void {
+    var wptr = frameBufferPtr(0, top);
+    var rptr = wptr + linesToScroll*active_mode_info.pixel_stride;
+
+    var strip:usize = 0;
+    const strips:usize = (bottom - top) / linesToScroll;
+    const rem_lines:usize = @mod((bottom - top), linesToScroll);
+    while(strip < strips) {
+
+        var line = linesToScroll;
+        while(line>0) {
+            @memcpy(wptr, rptr, active_mode_info.framebuffer_stride);
+            wptr += active_mode_info.pixel_stride;
+            rptr += active_mode_info.pixel_stride;
+            line -= 1;
+        }
+
+        strip += 1;
+    }
+
+    while(rem_lines>0) {
+        @memcpy(wptr, rptr, active_mode_info.framebuffer_stride);
+        wptr += active_mode_info.pixel_stride;
+        rptr += active_mode_info.pixel_stride;
+        rem_lines -= 1;
+    }
+}
+
+pub fn scrollRegion(region:Rectangle, linesToScroll:usize, up:bool) void {
+    
+    if ( region.Width() == 0 or region.Height() == 0 or linesToScroll==0 )
+        return;
+
+    if( linesToScroll>=region.Height() )
+    {
+        //TODO: just clear region
+        return;
+    }
+
+    
+}
+
+pub fn clearScreen(colour:u32) void {
+    assert(video_initialised==true);
+    var wptr = frameBufferPtr(0, 0);
+    var pixels_to_fill = active_mode_info.pixel_stride * active_mode_info.vert_res;
+    while(pixels_to_fill>0) {
+        wptr[0] = colour;
+        wptr+=1;
+        pixels_to_fill -= 1;
     }
 }

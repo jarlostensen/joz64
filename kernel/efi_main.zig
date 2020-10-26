@@ -210,22 +210,20 @@ pub fn main() void {
 
     const earlier = platform.rdtsc();
 
-    printBanner();
-
     // initialise the memory system and set up our allocator
     kernel.Memory.init();
     
-    // start setting up APICs for each processor
-    //initialiseApics();
-
     // gather information about memory, graphics modes, number of processors....
     if ( video.initialiseVideo()) {
         
+        console.initConsole();
         console.selectFont(&font8x8.font8x8_basic);
-        console.setTextColour(video.kBlue);
+        console.setTextColour(video.kYellow);
+        console.setTextBgColour(video.kCornflowerBlue);
+        console.clearScreen();
 
-        utils.efiPrint(buffer[0..], wbuffer[0..], "selected video mode is {}x{}, stride is {} pixels\n\r", 
-                    .{video.getActiveModeHorizontalRes(), video.getActiveModeVerticalRes(), video.getActiveModePixelStride()}
+        utils.efiPrint(buffer[0..], wbuffer[0..], "selected video mode is {}x{}, stride is {} pixels, framebuffer is {} bytes\n\r", 
+                    .{video.getActiveModeHorizontalRes(), video.getActiveModeVerticalRes(), video.getActiveModePixelStride(), video.getActiveModeFramebufferSize()}
                 );
 
         console.outputString("\n|-joZ64 --------------------------------------------------\n");
@@ -243,15 +241,16 @@ pub fn main() void {
         },
     }
 
-    const later = platform.rdtsc();    
-    // utils.efiPrint(buffer[0..], wbuffer[0..], "\t\n\rexiting and halting {} cycles later\n\r", 
-    //     .{later - earlier}
-    // );
+    const later = platform.rdtsc();
     
     kernel.Memory.memory_map.refresh();
     const boot_services = uefi.system_table.boot_services.?;
     _ = boot_services.exitBootServices(uefi.handle, kernel.Memory.memory_map.memory_map_key);
 
-    video.drawText(10, 500, video.kRed, font8x8.font8x8_basic, "...kernel halting");
+    const con_size = console.getConsoleSize();
+    console.setTextColour(video.kRed);
+    console.setCursorPos(0, con_size.height-2);
+    console.outputString("...kernel halting!");
+    
     kernel.halt();
 }
