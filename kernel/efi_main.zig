@@ -117,23 +117,74 @@ fn printBanner() void {
     _ = con_out.outputString(L("\n\r"));
 }
 
-fn initialiseApics() void {
-    
-    const boot_services = uefi.system_table.boot_services.?;
-    var mpprot:*mp.MpProtocol = undefined;
-    const result = boot_services.locateProtocol(&mp.MpProtocol.guid, null, @ptrCast(*?*c_void,&mpprot));
-    if ( result == uefi.Status.Success ) {
-        const con_out = uefi.system_table.con_out.?;
-        _ = con_out.outputString(L("\n\rAPIC and PIT checks  ======================\n\r"));
+fn guidEql(guid1:uefi.Guid, guid2:uefi.Guid) bool {
+    return (guid1.clock_seq_high_and_reserved == guid2.clock_seq_high_and_reserved 
+            and
+            guid1.clock_seq_low == guid2.clock_seq_low
+            and
+            guid1.time_low == guid2.time_low
+            and
+            guid1.time_mid == guid2.time_mid
+            and
+            guid1.time_high_and_version == guid2.time_high_and_version
+            and
+            std.mem.eql(u8, &guid1.node, &guid2.node) 
+            );
+}
 
-        if ( apic.initializePerCpu(kernel.Memory.system_allocator, mpprot) ) {
-            apic.dumpInfo();
+fn checkConfigurationTables() void {
 
-            //_ = con_out.outputString(L("start 55ms PIT wait..."));
-            // platform.pitWaitOneShot();
-            //_ = con_out.outputString(L("done\n\r"));
+    const configuration_tables = uefi.system_table.configuration_table;
+
+    var buffer:[256]u8 = undefined;
+    var formatted : []u8 = std.fmt.bufPrint(buffer[0..], "there are {} configuration table entries\n", .{uefi.system_table.number_of_table_entries}) catch unreachable;
+    console.outputString(formatted);
+
+    // for example https://blog.fpmurphy.com/2015/10/list-efi-configuration-table-entries.html
+    var table_idx:usize = 0;
+    const table = @ptrCast([*]uefi.tables.ConfigurationTable, configuration_tables); 
+    while( table_idx < uefi.system_table.number_of_table_entries ) {
+
+        if ( guidEql(table[table_idx].vendor_guid, uefi.tables.ConfigurationTable.acpi_20_table_guid) ) {
+            console.outputString("    ACPI 2.0 table\n");
+
+            const header:[*]u8 = @ptrCast([*]u8, table[table_idx].vendor_table);
+            formatted = std.fmt.bufPrint(buffer[0..], "    header signature: {c}{c}{c}{c}{c}{c}{c}{c}\n", 
+                .{header[0], header[1], header[2], header[3],
+                 header[4], header[5], header[6], header[7]}) catch unreachable;
+            console.outputString(formatted);
+
+        } else if ( guidEql(table[table_idx].vendor_guid, uefi.tables.ConfigurationTable.acpi_10_table_guid) ) {
+            console.outputString("    ACPI 1.0 table\n");
         }
+        else if ( guidEql(table[table_idx].vendor_guid, uefi.tables.ConfigurationTable.mps_table_guid) ) {
+            console.outputString("    MPS table\n");
+        }
+        else if ( guidEql(table[table_idx].vendor_guid, uefi.tables.ConfigurationTable.smbios_table_guid) ) {
+            console.outputString("    SMBIOS table\n");
+        }
+        else if ( guidEql(table[table_idx].vendor_guid, uefi.tables.ConfigurationTable.smbios3_table_guid) ) {
+            console.outputString("    SMBIOS 3 table\n");
+        }
+        
+        table_idx += 1;
     }
+
+    // const boot_services = uefi.system_table.boot_services.?;
+    // var mpprot:*mp.MpProtocol = undefined;
+    // const result = boot_services.locateProtocol(&mp.MpProtocol.guid, null, @ptrCast(*?*c_void,&mpprot));
+    // if ( result == uefi.Status.Success ) {
+    //     const con_out = uefi.system_table.con_out.?;
+    //     _ = con_out.outputString(L("\n\rAPIC and PIT checks  ======================\n\r"));
+
+    //     if ( apic.initializePerCpu(kernel.Memory.system_allocator, mpprot) ) {
+    //         apic.dumpInfo();
+
+    //         //_ = con_out.outputString(L("start 55ms PIT wait..."));
+    //         // platform.pitWaitOneShot();
+    //         //_ = con_out.outputString(L("done\n\r"));
+    //     }
+    // }
 }
 
 fn timestampInfo() void {
@@ -152,53 +203,6 @@ fn timestampInfo() void {
         var wbuffer: [256]u16 = undefined;
         utils.efiPrint(buffer[0..], wbuffer[0..], "    Timestamp value {}, frequency {}\n\r", 
                 .{now, props.freq});
-    }
-}
-
-var framebuffer_base:[*]u8 = undefined;
-var framebuffer_size:usize = 0;
-
-fn graphicsOutputProtocol() void {
-    const boot_services = uefi.system_table.boot_services.?;
-    
-    
-    var handles:[4]uefi.Handle = undefined;
-    var handles_size:usize = 4*@sizeOf(uefi.Handle);
-    if ( boot_services.locateHandle(std.os.uefi.tables.LocateSearchType.ByProtocol, 
-                    &uefi.protocols.GraphicsOutputProtocol.guid, 
-                    null,
-                    &handles_size, 
-                    &handles) == uefi.Status.Success ) {
-        var num_handles = handles_size/@sizeOf(uefi.Handle);
-
-        var buffer: [256]u8 = undefined;
-        var wbuffer: [256]u16 = undefined;
-
-        var gop:*uefi.protocols.GraphicsOutputProtocol = undefined;
-        if ( boot_services.handleProtocol(handles[0], &uefi.protocols.GraphicsOutputProtocol.guid, @ptrCast(*?*c_void, &gop)) == uefi.Status.Success ) {
-            
-            var mode_num:u32 = 0;
-            var size_of_info:usize = 0;
-            var info:*uefi.protocols.GraphicsOutputModeInformation = undefined;
-            var status = gop.queryMode(mode_num, &size_of_info, &info);
-            while(status == uefi.Status.Success) {
-                switch(info.pixel_format) {
-                    uefi.protocols.GraphicsPixelFormat.PixelRedGreenBlueReserved8BitPerColor,
-                    uefi.protocols.GraphicsPixelFormat.PixelBlueGreenRedReserved8BitPerColor => {
-
-                        if ( info.horizontal_resolution == 800 and info.vertical_resolution == 600 ) {
-                            framebuffer_base = @intToPtr([*]u8, gop.mode.frame_buffer_base);
-                            framebuffer_size = gop.mode.frame_buffer_size;
-                            break;
-                        }
-                    },
-                    else => {},
-                }
-                
-                mode_num += 1;
-                status = gop.queryMode(mode_num, &size_of_info, &info);
-            }
-        }
     }
 }
 
@@ -232,6 +236,8 @@ pub fn main() void {
         const con_size = console.getConsoleSize();
         console.setTextBgColour(0);
         console.clearRegion(.{ .top = 8, .right = con_size.width, .bottom = con_size.height - 8});
+        console.setCursorPos(.{.y = 8});
+        checkConfigurationTables();
     } 
     else |err| switch(err) {
         video.VideoError.GraphicsProtocolError => {
