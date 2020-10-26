@@ -88,7 +88,15 @@ pub fn outputString(comptime text: []const u8) void {
     var pos:usize = 0;
     for(text) |c| {
         if ( c == '\n' ) {
-            video.drawTextSegment(con_ctx.cursor_pos.x, con_ctx.cursor_pos.y, con_ctx.colour, con_ctx.bg_colour, con_ctx.font.?.*, text, start, pos-start);
+            video.drawTextSegment( .{ 
+                .left = con_ctx.cursor_pos.x, 
+                .top = con_ctx.cursor_pos.y, 
+                .colour = con_ctx.colour, 
+                .bg_colour = con_ctx.bg_colour, 
+                .font = con_ctx.font.?.*, 
+                .offs = start, 
+                .len = pos-start},
+                text);
             pos += 1;
             start = pos;
             //TODO: scroll

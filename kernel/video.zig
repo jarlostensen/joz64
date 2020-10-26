@@ -4,10 +4,8 @@ const uefi = std.os.uefi;
 
 const assert = std.debug.assert;
 
-//debug
-const utils = @import("utils.zig");
-const L = std.unicode.utf8ToUtf16LeStringLiteral;
-
+//debug const utils = @import("utils.zig");
+//debug const L = std.unicode.utf8ToUtf16LeStringLiteral;
 
 //ZZZ: depends on pixel format being RGB, we should have one per version
 pub const kWhite = 0xffffff;
@@ -16,6 +14,8 @@ pub const kGreen = 0x00ff00;
 pub const kBlue  = 0x0000ff;
 pub const kYellow = 0xffff00;
 pub const kCornflowerBlue = 0x6495ed;
+
+const kMaxHorizRes:u32 = 1024;
 
 pub const VideoError = error {
     GraphicsProtocolError,
@@ -95,14 +95,17 @@ pub fn initialiseVideo() VideoError!bool {
                     uefi.protocols.GraphicsPixelFormat.PixelRedGreenBlueReserved8BitPerColor,
                     uefi.protocols.GraphicsPixelFormat.PixelBlueGreenRedReserved8BitPerColor => {
                         
-                        // pick highest res mode
-                        if ( info.horizontal_resolution > max_horiz_res ) {
-                            max_horiz_res = info.horizontal_resolution;
-                            active_mode_info.pixel_stride = info.pixels_per_scan_line;
-                            active_mode_info.framebuffer_stride = info.pixels_per_scan_line << 2;
-                            active_mode_info.horiz_res = info.horizontal_resolution;
-                            active_mode_info.vert_res = info.vertical_resolution;
-                            found_mode = mode_num;
+                        // pick highest res mode <= 1024
+                        if ( info.horizontal_resolution > max_horiz_res 
+                                and 
+                            info.horizontal_resolution <= kMaxHorizRes ) {
+
+                                max_horiz_res = info.horizontal_resolution;
+                                active_mode_info.pixel_stride = info.pixels_per_scan_line;
+                                active_mode_info.framebuffer_stride = info.pixels_per_scan_line << 2;
+                                active_mode_info.horiz_res = info.horizontal_resolution;
+                                active_mode_info.vert_res = info.vertical_resolution;
+                                found_mode = mode_num;
                         }
                     },
                     else => {},
@@ -171,21 +174,34 @@ fn frameBufferPtr(left:usize, top:usize) [*]u32 {
     return wptr;
 }
 
+// as of 0.6.0 I can't use a completely anonymous structure in the function signature for this to be usable from outside this module.
+// https://old.reddit.com/r/Zig/comments/jihmht/anonymous_structure_as_function_arguments/
+pub const drawTextSegmentArgs = struct {
+            left:usize = 0,
+            top:usize = 0,
+            colour:u32 = 0,
+            bg_colour:u32 = 0xffffffff,
+            font:[128][8]u8 = undefined, 
+            offs:usize = 0,
+            len:usize = 0
+};
+
 // draw sub segment of text at position left,top using font and colour
-pub fn drawTextSegment(left:usize, top:usize, colour:u32, bg_colour:u32, font:[128][8]u8, comptime text: []const u8, offs:usize, len:usize) void {
-    if(len==0)
+pub fn drawTextSegment(args:drawTextSegmentArgs,
+        comptime text: []const u8 )void {
+    if(args.len==0)
         return;
 
     assert(video_initialised==true);
-    assert(offs+len <= text.len);
+    assert(args.offs+args.len <= text.len);
     
-    var wptr = frameBufferPtr(left, top);
+    var wptr = frameBufferPtr(args.left, args.top);
 
     // pixel set, or not set
-    const colour_lut = [2]u32{bg_colour, colour};
+    const colour_lut = [2]u32{args.bg_colour, args.colour};
     
-    var n = offs;
-    const end = offs+len;
+    var n = args.offs;
+    const end = args.offs+args.len;
     while(n < end) {
 
         const c = text[n];
@@ -193,19 +209,19 @@ pub fn drawTextSegment(left:usize, top:usize, colour:u32, bg_colour:u32, font:[1
         var line_ptr = wptr;
         while(line < 8) {
 
-            var pixels:u8 = font[c][line];
+            var pixels:u8 = args.font[c][line];
             switch(pixels) {
                 0 => {
-                    line_ptr[0] = bg_colour; line_ptr[1] = bg_colour;
-                    line_ptr[2] = bg_colour; line_ptr[3] = bg_colour;
-                    line_ptr[4] = bg_colour; line_ptr[5] = bg_colour;
-                    line_ptr[6] = bg_colour; line_ptr[7] = bg_colour;
+                    line_ptr[0] = args.bg_colour; line_ptr[1] = args.bg_colour;
+                    line_ptr[2] = args.bg_colour; line_ptr[3] = args.bg_colour;
+                    line_ptr[4] = args.bg_colour; line_ptr[5] = args.bg_colour;
+                    line_ptr[6] = args.bg_colour; line_ptr[7] = args.bg_colour;
                 },
                 0xff => {
-                    line_ptr[0] = colour; line_ptr[1] = colour;
-                    line_ptr[2] = colour; line_ptr[3] = colour;
-                    line_ptr[4] = colour; line_ptr[5] = colour;
-                    line_ptr[6] = colour; line_ptr[7] = colour;
+                    line_ptr[0] = args.colour; line_ptr[1] = args.colour;
+                    line_ptr[2] = args.colour; line_ptr[3] = args.colour;
+                    line_ptr[4] = args.colour; line_ptr[5] = args.colour;
+                    line_ptr[6] = args.colour; line_ptr[7] = args.colour;
                 },
                 else => {
                     var index:u8 = 0;
@@ -231,7 +247,14 @@ pub fn drawTextSegment(left:usize, top:usize, colour:u32, bg_colour:u32, font:[1
 pub fn drawText(left:usize, top:usize, colour:u32, bg_colour:u32, font:[128][8]u8, comptime text: []const u8) void {
     if(text.len==0)
         return;
-    drawTextSegment(left, top, colour, bg_colour, font, text, 0, text.len);
+    drawTextSegment( .{
+         .left = left, 
+         .top = top, 
+         .colour = colour, 
+         .bg_colour = bg_colour, 
+         .font = font, 
+         .len = text.len}, 
+    text);
 }
 
 pub fn drawFilledSquare(left:usize, top:usize, right:usize, bottom:usize, colour:u32) void {
@@ -320,7 +343,7 @@ pub fn scrollRegion(region:Rectangle, linesToScroll:usize, up:bool) void {
         return;
     }
 
-    
+
 }
 
 pub fn clearScreen(colour:u32) void {
