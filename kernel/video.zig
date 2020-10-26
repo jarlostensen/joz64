@@ -1,4 +1,6 @@
 const std = @import("std");
+
+const types = @import("types.zig");
 const kernel = @import("kernel.zig");
 const uefi = std.os.uefi;
 
@@ -21,21 +23,6 @@ pub const VideoError = error {
     GraphicsProtocolError,
     NoSuitableModeFound,
     SetModeFailed,
-};
-
-pub const Rectangle = struct {
-    top:usize,
-    left:usize,
-    bottom:usize,
-    right:usize,
-
-    pub fn Width(self:*const Rectangle) usize {
-        return self.right - self.left;
-    }
-
-    pub fn Height(self:*const Rectangle) usize {
-        return self.bottom - self.top;
-    }
 };
 
 const ActiveModeInfo = struct {
@@ -308,42 +295,98 @@ fn scrollUpRegionFullWidth(top:usize, bottom:usize, linesToScroll:usize) void {
     var wptr = frameBufferPtr(0, top);
     var rptr = wptr + linesToScroll*active_mode_info.pixel_stride;
 
+    const strip_stride = linesToScroll * active_mode_info.pixel_stride;
     var strip:usize = 0;
-    const strips:usize = (bottom - top) / linesToScroll;
+    const strips:usize = ((bottom - top) / linesToScroll) - 1;
     const rem_lines:usize = @mod((bottom - top), linesToScroll);
     while(strip < strips) {
 
-        var line = linesToScroll;
-        while(line>0) {
-            @memcpy(wptr, rptr, active_mode_info.framebuffer_stride);
-            wptr += active_mode_info.pixel_stride;
-            rptr += active_mode_info.pixel_stride;
-            line -= 1;
-        }
+        @memcpy(@ptrCast([*]align(4)u8, wptr), @ptrCast([*]align(4)u8, rptr), strip_stride<<2);
+        wptr += strip_stride;
+        rptr += strip_stride;
 
         strip += 1;
     }
 
-    while(rem_lines>0) {
-        @memcpy(wptr, rptr, active_mode_info.framebuffer_stride);
-        wptr += active_mode_info.pixel_stride;
-        rptr += active_mode_info.pixel_stride;
-        rem_lines -= 1;
+    if ( rem_lines>0 )
+    {
+        @memcpy(@ptrCast([*]align(4)u8, wptr), @ptrCast([*]align(4)u8, rptr), rem_lines * active_mode_info.framebuffer_stride);
     }
 }
 
-pub fn scrollRegion(region:Rectangle, linesToScroll:usize, up:bool) void {
-    
+fn scrollDownRegionFullWidth(top:usize, bottom:usize, linesToScroll:usize) void {
+    var wptr = frameBufferPtr(0, bottom-linesToScroll);
+    var rptr = frameBufferPtr(0, bottom-2*linesToScroll);
+
+    const strip_stride = linesToScroll * active_mode_info.pixel_stride;
+    var strip:usize = 0;
+    const strips:usize = ((bottom - top) / linesToScroll) - 1;
+    while(strip < strips) {
+
+        @memcpy(@ptrCast([*]align(4)u8, wptr), @ptrCast([*]align(4)u8, rptr), strip_stride<<2);
+        wptr -= strip_stride;
+        rptr -= strip_stride;
+        
+        strip += 1;
+    }
+
+    const rem_lines:usize = @mod((bottom - top), linesToScroll);
+    if ( rem_lines>0 )
+    {
+        wptr += strip_stride;
+        rptr += strip_stride;
+        wptr -= rem_lines;
+        rptr -= rem_lines;
+        @memcpy(@ptrCast([*]align(4)u8, wptr), @ptrCast([*]align(4)u8, rptr), rem_lines * active_mode_info.framebuffer_stride);
+    }
+}
+
+pub fn scrollRegion(region:types.Rectangle, linesToScroll:usize, comptime up:bool) void {
+    assert(video_initialised==true);
     if ( region.Width() == 0 or region.Height() == 0 or linesToScroll==0 )
         return;
 
     if( linesToScroll>=region.Height() )
     {
-        //TODO: just clear region
+        var wptr = frameBufferPtr(region.top, region.left);
+        var lines = region.Height();
+        while(lines>0) {
+            //ZZZ: set to bg colour
+            @memset(@ptrCast([*]align(4)u8, wptr), 0, region.Width()<<2);
+            wptr += active_mode_info.pixel_stride;
+            lines -= 1;
+        }
         return;
     }
 
+    if ( region.Width() == active_mode_info.horiz_res ) {
+        if ( up ) {
+            scrollUpRegionFullWidth(region.top, region.bottom, linesToScroll);
+        }
+        else {
+            scrollDownRegionFullWidth(region.top, region.bottom, linesToScroll);
+        }
+    }
 
+    //TODO: else
+    assert(false);
+}
+
+//TODO:
+pub fn drawLine(p0:types.Point, p1:types.Point, colour:u32, width:usize) void {
+    assert(video_initialised==true);
+
+    if (p0.x == p1.x and p0.y == p1.y )
+    {
+        //TODO: width
+        frameBufferPtr(p0.x, p0.y)[0] = colour;
+        return;
+    }
+
+    if ( p0.y == p1.y ) {
+        // horisontal
+        
+    }
 }
 
 pub fn clearScreen(colour:u32) void {
@@ -354,5 +397,21 @@ pub fn clearScreen(colour:u32) void {
         wptr[0] = colour;
         wptr+=1;
         pixels_to_fill -= 1;
+    }
+}
+
+pub fn clearRegion(region:types.Rectangle, colour:u32) void {
+    assert(video_initialised==true);
+    var wptr = frameBufferPtr(region.left, region.top);
+    var lines = region.Height();
+    while(lines>0) {
+        //TODO: SIMD
+        var pixels = region.Width();
+        while(pixels>0) {
+            wptr[pixels-1] = colour;
+            pixels -= 1;
+        }
+        wptr += active_mode_info.pixel_stride;
+        lines -= 1;
     }
 }

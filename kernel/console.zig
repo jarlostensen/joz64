@@ -1,4 +1,5 @@
 const std = @import("std");
+const types = @import("types.zig");
 const video = @import("video.zig");
 const font8x8 = @import("font8x8.zig");
 
@@ -12,19 +13,15 @@ pub const CursorPos = struct {
     y:usize,
 };
 
-pub const Size = struct {
-    width:usize,
-    height:usize,
-};
-
 const ConsoleContext = struct {
 
     font:?*[128][8]u8,
     colour:u32,
     bg_colour:u32,
 
+    //NOTE: this position is in PIXELS (not console cells)
     cursor_pos:CursorPos,
-    size:Size,
+    size:types.Size,
 
     initialised:bool,
 };
@@ -33,8 +30,8 @@ var con_ctx = ConsoleContext{
     .font = null,
     .colour = video.kWhite,
     .bg_colour = 0,    
-    .cursor_pos = CursorPos{ .x = 0, .y=0 },
-    .size = Size{ .width = 0, .height = 0 },
+    .cursor_pos = .{ .x = 0, .y=0 },
+    .size = .{ .width = 0, .height = 0 },
     .initialised = false,
 };
 
@@ -44,23 +41,26 @@ pub fn initConsole() void {
     con_ctx.size.height = video.getActiveModeVerticalRes() / kLineHeightPixels;
 }
 
-pub fn getConsoleSize() Size {
+pub fn getConsoleSize() types.Size {
     assert(con_ctx.initialised==false);
     return con_ctx.size;
 }
 
+fn consolePosToVideoPos(pos:types.Point) types.Point {
+    return .{ .x = pos.x*kCharWidthPixels, .y = pos.y*kLineHeightPixels };
+}
+
 //sets cursor position (in units of characters and lines)
-pub fn setCursorPos(c:usize, l:usize) void {
-    var x = c * kCharWidthPixels;
-    var y = l * kLineHeightPixels;
-    if ( x >= video.getActiveModeHorizontalRes() ) {
-        x = video.getActiveModeHorizontalRes() - kCharWidthPixels;
+pub fn setCursorPos(pos:types.Point) void {
+    var vpos = consolePosToVideoPos(pos);
+    if ( vpos.x >= video.getActiveModeHorizontalRes() ) {
+        vpos.x = video.getActiveModeHorizontalRes() - kCharWidthPixels;
     }
-    if( y >= video.getActiveModeVerticalRes() ) {
-        y = video.getActiveModeVerticalRes() - kLineHeightPixels;
+    if( vpos.y >= video.getActiveModeVerticalRes() ) {
+        vpos.y = video.getActiveModeVerticalRes() - kLineHeightPixels;
     }
-    con_ctx.cursor_pos.x = x;
-    con_ctx.cursor_pos.y = y;
+    con_ctx.cursor_pos.x = vpos.x;
+    con_ctx.cursor_pos.y = vpos.y;
 }
 
 pub fn getCursorPos() CursorPos {
@@ -116,6 +116,22 @@ pub fn outputString(comptime text: []const u8) void {
     }
 }
 
+// clear the entire screen to BG colour
 pub fn clearScreen() void {
     video.clearScreen(con_ctx.bg_colour);
+}
+
+// clear a region to BG colour
+pub fn clearRegion(region:types.Rectangle) void {
+    const vpos0 = consolePosToVideoPos(.{ .x = region.left, .y = region.top });
+    const vpos1 = consolePosToVideoPos(.{ .x = region.right, .y = region.bottom });
+    const vregion:types.Rectangle = .{ 
+        .top = vpos0.y, .left = vpos0.x,
+        .bottom = vpos1.y, .right = vpos1.x,
+    };
+    video.clearRegion(vregion, con_ctx.bg_colour);
+}
+
+pub fn selectClientRegion(region:types.Rectangle) void {
+
 }

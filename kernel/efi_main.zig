@@ -222,12 +222,16 @@ pub fn main() void {
         console.setTextBgColour(video.kCornflowerBlue);
         console.clearScreen();
 
-        utils.efiPrint(buffer[0..], wbuffer[0..], "selected video mode is {}x{}, stride is {} pixels, framebuffer is {} bytes\n\r", 
-                    .{video.getActiveModeHorizontalRes(), video.getActiveModeVerticalRes(), video.getActiveModePixelStride(), video.getActiveModeFramebufferSize()}
-                );
+        //debug: utils.efiPrint(buffer[0..], wbuffer[0..], "selected video mode is {}x{}, stride is {} pixels, framebuffer is {} bytes\n\r", 
+        //debug:    .{video.getActiveModeHorizontalRes(), video.getActiveModeVerticalRes(), video.getActiveModePixelStride(), video.getActiveModeFramebufferSize()}
+        //debug: );
 
         console.outputString("\n|-joZ64 --------------------------------------------------\n");
         console.outputString("|---------------------------------------------------------\n");
+
+        const con_size = console.getConsoleSize();
+        console.setTextBgColour(0);
+        console.clearRegion(.{ .top = 8, .right = con_size.width, .bottom = con_size.height - 8});
     } 
     else |err| switch(err) {
         video.VideoError.GraphicsProtocolError => {
@@ -246,10 +250,10 @@ pub fn main() void {
     kernel.Memory.memory_map.refresh();
     const boot_services = uefi.system_table.boot_services.?;
     _ = boot_services.exitBootServices(uefi.handle, kernel.Memory.memory_map.memory_map_key);
-
+    
     const con_size = console.getConsoleSize();
     console.setTextColour(video.kRed);
-    console.setCursorPos(0, con_size.height-2);
+    console.setCursorPos(.{ .x = 0, .y = con_size.height-2});
     console.outputString("...kernel halting!");
     
     kernel.halt();
