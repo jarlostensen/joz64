@@ -175,7 +175,7 @@ pub const drawTextSegmentArgs = struct {
 
 // draw sub segment of text at position left,top using font and colour
 pub fn drawTextSegment(args:drawTextSegmentArgs,
-        comptime text: []const u8 )void {
+        text: []const u8 )void {
     if(args.len==0)
         return;
 
@@ -231,7 +231,7 @@ pub fn drawTextSegment(args:drawTextSegmentArgs,
 }
 
 // draw text at position left,top using font and colour
-pub fn drawText(left:usize, top:usize, colour:u32, bg_colour:u32, font:[128][8]u8, comptime text: []const u8) void {
+pub fn drawText(left:usize, top:usize, colour:u32, bg_colour:u32, font:[128][8]u8, text: []const u8) void {
     if(text.len==0)
         return;
     drawTextSegment( .{

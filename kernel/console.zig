@@ -82,7 +82,7 @@ pub fn setTextBgColour(colour:u32) void {
     con_ctx.bg_colour = colour;
 }
 
-pub fn outputString(comptime text: []const u8) void {
+pub fn outputString(text: []const u8) void {
 
     var start:usize = 0;
     var pos:usize = 0;
