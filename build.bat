@@ -9,7 +9,7 @@ cd build
 rem ZZZ: until I figure out why build.zig doesn't work with assembly source I need to do this manually
 ..\zig\zig clang -c ../kernel/kernel.s
 if %ERRORLEVEL% equ 0 (
-    zig build-exe ../kernel/efi_main.zig --object kernel.o --name bootx64 -target x86_64-uefi-msvc --subsystem efi_application -femit-asm
+    ..\zig\zig build-exe ../kernel/efi_main.zig --library kernel.o --name bootx64 -target x86_64-uefi-msvc --subsystem efi_application -femit-asm --strip
 
     if %ERRORLEVEL% equ 0 (
         ..\tools\efigen.exe -i bootx64.efi -o boot.dd 
